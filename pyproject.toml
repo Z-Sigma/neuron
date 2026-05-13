@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neuron"
+version = "1.0.0"
+authors = [
+  { name="Ajit", email="ajit@example.com" },
+]
+description = "NEURON: A high-performance, graph-based cognitive memory framework for AI agents."
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "pydantic-settings",
+    "psycopg2-binary",
+    "pgvector",
+    "openai",
+    "anthropic",
+    "loguru",
+    "numpy",
+    "langchain",
+    "python-dotenv",
+    "sentence-transformers",
+    "neo4j",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/yourusername/neuron"
+"Bug Tracker" = "https://github.com/yourusername/neuron/issues"
+
+[project.scripts]
+neuron = "neuron.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["neuron*"]

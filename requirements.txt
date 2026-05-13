@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+pydantic
+pydantic-settings
+psycopg2-binary
+pgvector
+openai
+anthropic
+loguru
+numpy
+langchain
+python-dotenv
+sentence-transformers
