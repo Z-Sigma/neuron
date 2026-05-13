@@ -1,11 +1,11 @@
 <div align="center">
   <img src="logo.png" alt="Neuron Logo" width="200"/>
-  <h1>🧠 neuron | Cognitive Memory Engine</h1>
+  <h1>🧠 neuron | Cognitive Memory Layer</h1>
 </div>
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue) ![Database](https://img.shields.io/badge/Database-Neo4j%20%7C%20Postgres-success) ![License](https://img.shields.io/badge/License-MIT-purple) ![Status](https://img.shields.io/badge/Status-Production%20Ready-green)
 
-**neuron** is an enterprise-grade, database-agnostic Cognitive Memory Engine designed for Autonomous AI Agents. It simulates human biological memory by automatically abstracting, filtering, connecting, and naturally forgetting data over time.
+**neuron** is an enterprise-grade, database-agnostic Cognitive Memory Layer designed for Autonomous AI Agents. It simulates human biological memory by automatically abstracting, filtering, connecting, and naturally forgetting data over time.
 
 Instead of a standard Vector DB that just stores isolated text chunks, neuron builds an interconnected **"Semantic Brain"** using Graph databases (Neo4j, Postgres) combined with Vector Search (HNSW) and LLM Intelligence.
 
@@ -185,7 +185,7 @@ brain.maintenance(
 *   `user_id` *(str)*: A unique identifier for the user.
 *   `stale_days` *(int, default=30)*: Number of days since a memory was last recalled before it starts losing confidence points.
 *   `min_confidence` *(float, default=0.35)*: The absolute minimum confidence score. If a memory drops below this, it is soft-deleted/archived.
-*   `consolidate` *(bool, default=True)*: If True, the engine will attempt to merge highly similar clusters of memories together to free up database space.
+*   `consolidate` *(bool, default=True)*: If True, the Layer will attempt to merge highly similar clusters of memories together to free up database space.
 
 ---
 
@@ -217,7 +217,7 @@ python tests/batch_fast_test.py
 
 **Copyright © 2026 Z-Sigma.** All rights reserved.
 
-The `neuron` engine is open-source under the MIT License. We actively welcome contributions from the community! If you are a developer or researcher interested in Autonomous Agents, Graph Theory, or Cognitive Architecture, please feel free to:
+neuron is open-source under the MIT License. We actively welcome contributions from the community! If you are a developer or researcher interested in Autonomous Agents, Graph Theory, or Cognitive Architecture, please feel free to:
 1. **Fork the repository** and submit Pull Requests.
 2. **Open an Issue** for feature requests or bug reports.
 3. Reach out directly for enterprise collaborations or integration partnerships.
