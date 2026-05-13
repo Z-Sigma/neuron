@@ -191,13 +191,14 @@ class Memory:
                                 ))
 
                 # B. Semantic linking (Implicit)
-                for nearest_id in result.nearest_node_ids[:2]:
+                for i, nearest_id in enumerate(result.nearest_node_ids[:2]):
+                    similarity = result.nearest_node_similarities[i]
                     if not any(e.to_node_id == nearest_id for e in self.store.get_edges(new_node.id)):
                         self.store.add_edge(Edge(
                             from_node_id=new_node.id,
                             to_node_id=nearest_id,
                             relation="refines",
-                            weight=0.5
+                            weight=float(similarity)
                         ))
                 
                 return new_node
@@ -339,6 +340,150 @@ class Memory:
             
         return {
             "nodes_added": len(unique_nodes),
+            "edges_added": len(edges),
+            "duplicates_dropped": dropped_count
+        }
+
+    def process_batch_deep(
+        self, 
+        texts: List[str], 
+        user_id: str, 
+        window_size: Optional[int] = None,
+        deduplication_threshold: float = 0.95,
+        knn_edges: int = 3
+    ) -> Dict:
+        """
+        Deep Batch Processing (Variant 2.75).
+        Combines fast deduplication with windowed LLM extraction for high-signal ingestion.
+        
+        Args:
+            texts: List of raw text chunks.
+            user_id: Unique identifier for the user.
+            window_size: Number of chunks per LLM call.
+            deduplication_threshold: Cosine similarity for dropping redundant chunks.
+            knn_edges: Number of nearest-neighbor semantic edges per node.
+            
+        Returns:
+            A summary of added nodes, edges, and dropped duplicates.
+        """
+        if not texts:
+            return {"nodes_added": 0, "edges_added": 0, "duplicates_dropped": 0}
+            
+        window_size = window_size or settings.batch_window_size
+        logger.info(f"Deep-processing batch of {len(texts)} chunks...")
+        
+        # 1. Batch Embed and De-duplicate (Pure Memory Logic)
+        import numpy as np
+        embeddings = self.embedder.embed_batch(texts)
+        emb_matrix = np.array(embeddings)
+        
+        norms = np.linalg.norm(emb_matrix, axis=1, keepdims=True)
+        norms[norms == 0] = 1e-10
+        normalized_matrix = emb_matrix / norms
+        sim_matrix = np.dot(normalized_matrix, normalized_matrix.T)
+        
+        keep_indices = []
+        dropped_count = 0
+        for i in range(len(texts)):
+            is_duplicate = False
+            for j in keep_indices:
+                if sim_matrix[i, j] >= deduplication_threshold:
+                    is_duplicate = True
+                    break
+            if not is_duplicate:
+                keep_indices.append(i)
+            else:
+                dropped_count += 1
+                
+        unique_texts = [texts[i] for i in keep_indices]
+        unique_embeddings = [embeddings[i] for i in keep_indices]
+        
+        # 2. Windowed Metadata Extraction (LLM Logic)
+        logger.info(f"Extracting metadata for {len(unique_texts)} chunks (Windows of {window_size})...")
+        all_abstractions = []
+        for i in range(0, len(unique_texts), window_size):
+            window = unique_texts[i : i + window_size]
+            abstractions = self.engine.batch_extract(window)
+            all_abstractions.extend(abstractions)
+            
+        # 3. Create Nodes
+        new_nodes = []
+        for idx, abstraction in enumerate(all_abstractions):
+            node = Node(
+                user_id=user_id,
+                label=abstraction.label,
+                confidence=abstraction.confidence,
+                domain_tags=abstraction.domain_tags,
+                entities=abstraction.entities,
+                temporal_stability=abstraction.temporal_stability,
+                abstraction_level=abstraction.abstraction_level,
+                embedding=unique_embeddings[idx]
+            )
+            new_nodes.append(node)
+            
+        # 4. Construct Associative Edges
+        edges = []
+        
+        # A. K-NN Semantic Edges (within the batch)
+        if len(new_nodes) > 1:
+            for i, idx_a in enumerate(keep_indices):
+                node_a = new_nodes[i]
+                neighbors = []
+                for j, idx_b in enumerate(keep_indices):
+                    if i != j:
+                        similarity = sim_matrix[idx_a, idx_b]
+                        neighbors.append((similarity, j))
+                neighbors.sort(key=lambda x: x[0], reverse=True)
+                for sim, j in neighbors[:knn_edges]:
+                    node_b = new_nodes[j]
+                    edges.append(Edge(
+                        from_node_id=node_a.id,
+                        to_node_id=node_b.id,
+                        relation="refines",
+                        weight=float(sim)
+                    ))
+                    
+        # B. Entity Hub Linking (Crossing sessions)
+        entity_map = {}
+        for node in new_nodes:
+            for ent in node.entities:
+                if ent not in entity_map: entity_map[ent] = []
+                entity_map[ent].append(node)
+        
+        for entity, nodes in entity_map.items():
+            # Local Batch Linking (Star topology to avoid O(N^2))
+            if len(nodes) > 1:
+                hub_node = nodes[0]
+                for other in nodes[1:]:
+                    edges.append(Edge(
+                        from_node_id=other.id,
+                        to_node_id=hub_node.id,
+                        relation="refines",
+                        weight=0.8
+                    ))
+            
+            # Global Hub Linking
+            global_hubs = self.store.get_nodes_by_entity(entity, user_id)
+            if global_hubs:
+                hub = global_hubs[0]
+                for node in nodes:
+                    if node.id != hub.id:
+                        edges.append(Edge(
+                            from_node_id=node.id,
+                            to_node_id=hub.id,
+                            relation="refines",
+                            weight=0.9
+                        ))
+                        
+        # 5. Bulk Store
+        logger.info(f"Storing {len(new_nodes)} Nodes and {len(edges)} Edges...")
+        if new_nodes:
+            self.store.add_nodes_batch(new_nodes)
+        if edges:
+            self.store.add_edges_batch(edges)
+            
+        return {
+            "nodes_added": len(new_nodes),
             "edges_added": len(edges),
             "duplicates_dropped": dropped_count
         }

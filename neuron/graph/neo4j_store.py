@@ -150,6 +150,10 @@ class Neo4jGraphStore(GraphStore):
         with self.driver.session() as session:
             return session.execute_read(self._list_nodes_tx, user_id, limit)
 
+    def get_nodes_by_entity(self, entity: str, user_id: str) -> List[Node]:
+        with self.driver.session() as session:
+            return session.execute_read(self._get_nodes_by_entity_tx, entity, user_id)
+
     def get_stale_nodes(self, user_id: str, days: int = 30, conf_threshold: float = 0.35) -> List[Node]:
         with self.driver.session() as session:
             return session.execute_read(self._get_stale_tx, user_id, days, conf_threshold)
@@ -322,6 +326,15 @@ class Neo4jGraphStore(GraphStore):
             MATCH (n:Belief {user_id: $user_id, deprecated: false})
             RETURN n LIMIT $limit
         """, user_id=user_id, limit=limit)
+        return [Neo4jGraphStore._record_to_node(record['n']) for record in result]
+
+    @staticmethod
+    def _get_nodes_by_entity_tx(tx, entity, user_id):
+        result = tx.run("""
+            MATCH (n:Belief {user_id: $user_id, deprecated: false})
+            WHERE $entity IN n.entities
+            RETURN n
+        """, user_id=user_id, entity=entity)
         return [Neo4jGraphStore._record_to_node(record['n']) for record in result]
 
     @staticmethod

@@ -1,6 +1,6 @@
 <div align="center">
   <img src="logo.png" alt="Neuron Logo" width="200"/>
-  <h1>🧠 neuron Cognitive Memory Engine</h1>
+  <h1>🧠 neuron | Cognitive Memory Engine</h1>
 </div>
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue) ![Database](https://img.shields.io/badge/Database-Neo4j%20%7C%20Postgres-success) ![License](https://img.shields.io/badge/License-MIT-purple) ![Status](https://img.shields.io/badge/Status-Production%20Ready-green)
@@ -63,6 +63,8 @@ neuron is highly modular. Create a `.env` file in your root directory. The syste
 | `traversal_depth` | How many Graph Hops outward the algorithm should walk | `3` |
 | `max_context_nodes` | The absolute maximum number of nodes returned to the LLM | `50` |
 | `min_edge_weight` | Minimum edge similarity score required to follow a graph path | `0.6` |
+| `batch_window_size` | Number of chunks analyzed per LLM call in Deep Batch mode | `20` |
+| `max_label_length` | Maximum character length for knowledge labels before truncation | `2000` |
 
 ---
 
@@ -115,7 +117,31 @@ brain.process_batch_fast(
 
 ---
 
-### 3. The Retrieval Workflow (Deep Recall)
+### 3. The Batched Enrichment Workflow (Option 2.75: Deep Batch)
+This is the middle-ground for deep research. It uses the same fast deduplication as the "Fast" mode, but then uses **Windowed LLM Extraction**. It sends 20 chunks at a time to the LLM to extract metadata (entities, tags, labels). This provides high-signal intelligence at a 90% lower cost than `process()`.
+
+```python
+research_data = ["Fact about SpaceX", "Fact about Mars", "Fact about Starship"]
+
+# Enriches thousands of chunks with LLM metadata at scale
+brain.process_batch_deep(
+    texts=research_data, 
+    user_id="user_123",
+    window_size=20, # How many chunks to process per LLM call
+    deduplication_threshold=0.95,
+    knn_edges=3
+)
+```
+**Arguments:**
+*   `texts` *(List[str])*: A list of raw text chunks.
+*   `user_id` *(str)*: A unique identifier for the user.
+*   `window_size` *(int, default=20)*: Number of chunks sent in a single LLM prompt. Higher values save more money but may reduce NER precision.
+*   `deduplication_threshold` *(float, default=0.95)*: Similarity threshold for local deduplication.
+*   `knn_edges` *(int, default=3)*: Number of semantic neighbors to link within the batch.
+
+---
+
+### 4. The Retrieval Workflow (Deep Recall)
 When you want to search the brain, neuron uses a Hybrid Search. It uses HNSW to find the closest vector "Seed", and then uses Graph algorithms to walk outward, gathering full surrounding context.
 
 ```python
@@ -143,7 +169,7 @@ for node in context["related_context"]:
 
 ---
 
-### 4. Synaptic Pruning (Lifecycle Maintenance)
+### 5. Synaptic Pruning (Lifecycle Maintenance)
 Turn your database into a living brain. Run this periodically via a cron job or Celery task. It scans the database, decays the confidence score of unused facts, and eventually "archives" them to save space and context bloat.
 
 ```python

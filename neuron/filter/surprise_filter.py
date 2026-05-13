@@ -55,6 +55,7 @@ class SurpriseFilter:
             is_novel=is_novel,
             novelty_score=novelty_score,
             nearest_node_ids=[n[0].id for n in similarities],
+            nearest_node_similarities=[float(n[1]) for n in similarities],
             contradiction_candidates=contradiction_candidates,
             confirmation_targets=confirmation_targets
         )

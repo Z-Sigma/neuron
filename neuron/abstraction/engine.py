@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import List
 from neuron.models import AbstractionResult
 from neuron.llm.provider import get_llm_provider
 
@@ -30,6 +31,54 @@ class AbstractionEngine:
                         domain_tags=[],
                         entities=[],
                     )
+
+    def batch_extract(self, texts: List[str], retries: int = 2) -> List[AbstractionResult]:
+        """Extract metadata for a batch of texts using a single LLM call."""
+        from neuron.config import settings
+        
+        # Format the batch of texts
+        formatted_texts = "\n---\n".join([f"Chunk {i+1}: {text}" for i, text in enumerate(texts)])
+        prompt = f"{settings.batch_abstraction_prompt}\n\nInput Chunks:\n{formatted_texts}"
+        
+        for attempt in range(retries + 1):
+            try:
+                content = self.provider.completion(prompt, system_prompt="You are a batched semantic abstraction engine.")
+                results_data = self._parse_json_list(content)
+                
+                # Normalize and validate each result
+                final_results = []
+                for i, data in enumerate(results_data):
+                    data = self._normalize_fields(data)
+                    # Use provided chunk text if label is missing or too short
+                    if not data.get("label"):
+                        data["label"] = texts[i][:150]
+                    final_results.append(AbstractionResult(**data))
+                
+                # Ensure we return the same number of results as input texts
+                if len(final_results) != len(texts):
+                    logger.warning(f"Batch size mismatch: expected {len(texts)}, got {len(final_results)}. Padding with fallbacks.")
+                    while len(final_results) < len(texts):
+                        idx = len(final_results)
+                        final_results.append(AbstractionResult(label=texts[idx][:150], confidence=0.5))
+                    final_results = final_results[:len(texts)]
+                
+                return final_results
+            except Exception as e:
+                logger.warning(f"Batch abstraction attempt {attempt + 1} failed: {e}")
+                if attempt == retries:
+                    logger.error(f"All batch abstraction attempts failed. Falling back to simple results.")
+                    return [AbstractionResult(label=t[:150], confidence=0.5) for t in texts]
+
+    def _parse_json_list(self, text: str) -> List[dict]:
+        """Extracts a JSON list from LLM response."""
+        start = text.find('[')
+        end = text.rfind(']') + 1
+        if start != -1 and end != 0:
+            json_str = text[start:end]
+            data = json.loads(json_str)
+            if isinstance(data, list):
+                return data
+        raise ValueError("No JSON list found in response")
 
     def _normalize_fields(self, data: dict) -> dict:
         """Normalize LLM output to match Pydantic Literal constraints."""

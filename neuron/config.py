@@ -30,6 +30,24 @@ class Settings(BaseSettings):
         "temporal_stability": "stable", "volatile", or "time-bound"
     }
     """
+    
+    batch_abstraction_prompt: str = """
+    Analyze these chunks of text. For each chunk, extract its semantic metadata.
+    Preserve all Named Entities (Project Codes, People, Companies, Locations).
+    
+    Return a JSON array of objects, one for each chunk in the EXACT same order:
+    [
+        {
+            "label": "The core belief/fact for chunk 1",
+            "confidence": 0.0-1.0,
+            "domain_tags": ["tag1", "tag2"],
+            "entities": ["Entity1", "Entity2"],
+            "abstraction_level": "specific", "pattern", or "principle",
+            "temporal_stability": "stable", "volatile", or "time-bound"
+        },
+        ...
+    ]
+    """
     graph_store_type: str = "postgres" # Options: postgres, neo4j, in_memory
     database_url: str = "postgresql://postgres:postgres@localhost:5432/neuron"
     neo4j_uri: str = "bolt://localhost:7687"
@@ -48,8 +66,11 @@ class Settings(BaseSettings):
     max_context_nodes: int = 50
     min_edge_weight: float = 0.6
     min_confidence: float = 0.35
+    batch_window_size: int = 20
+    max_label_length: int = 2000
     
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 settings = Settings()

@@ -56,6 +56,10 @@ class GraphStore(ABC):
     @abstractmethod
     def list_nodes(self, user_id: str, limit: int = 100) -> List[Node]:
         pass
+        
+    @abstractmethod
+    def get_nodes_by_entity(self, entity: str, user_id: str) -> List[Node]:
+        pass
 
     @abstractmethod
     def update_edge(self, edge: Edge) -> Edge:

@@ -98,6 +98,14 @@ class InMemoryGraphStore(GraphStore):
         user_nodes = [n for n in self.nodes.values() if n.user_id == user_id]
         return user_nodes[:limit]
 
+    def get_nodes_by_entity(self, entity: str, user_id: str) -> List[Node]:
+        return [
+            n for n in self.nodes.values() 
+            if n.user_id == user_id 
+            and not n.deprecated 
+            and entity in n.entities
+        ]
+
     def update_edge(self, edge: Edge) -> Edge:
         for i, e in enumerate(self.edges):
             if e.id == edge.id:

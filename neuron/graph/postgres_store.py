@@ -264,6 +264,17 @@ class PostgresGraphStore(GraphStore):
             rows = cur.fetchall()
             return [self._row_to_node(row) for row in rows]
 
+    def get_nodes_by_entity(self, entity: str, user_id: str) -> List[Node]:
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                SELECT * FROM nodes 
+                WHERE user_id = %s 
+                AND %s = ANY(entities)
+                AND deprecated = FALSE
+            """, (user_id, entity))
+            rows = cur.fetchall()
+            return [self._row_to_node(row) for row in rows]
+
     def update_edge(self, edge: Edge) -> Edge:
         with self.conn.cursor() as cur:
             cur.execute("""
