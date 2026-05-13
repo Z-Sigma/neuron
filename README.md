@@ -1,5 +1,7 @@
-# 🧠 neuron Cognitive Memory Engine
-
+<div align="center">
+  <img src="logo.png" alt="Neuron Logo" width="200"/>
+  <h1>🧠 neuron Cognitive Memory Engine</h1>
+</div>
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![Database](https://img.shields.io/badge/Database-Neo4j%20%7C%20Postgres-success)
 ![License](https://img.shields.io/badge/License-MIT-purple)
