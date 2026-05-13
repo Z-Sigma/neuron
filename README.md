@@ -161,7 +161,45 @@ for node in context["related_context"]:
 **Arguments:**
 *   `query` *(str)*: The question or context the Agent is searching for.
 *   `user_id` *(str)*: A unique identifier for the user.
+MAX_LABEL_LENGTH=2000 # Configurable limit for node labels
 
+# Adaptive Memory Settings (Optional)
+ENABLE_ADAPTIVE_MEMORY=True # Set to False to disable all adaptive features
+ADAPTIVE_MODE=auto # auto, manual, off
+MAINTENANCE_INTERVAL_HOURS=24
+STRATEGY_POPULATION_SIZE=8
+EXPLORATION_RATE=0.2 # Epsilon-greedy exploration
+JUDGE_LLM_MODEL=gpt-4o-mini # Background scoring model
+
+## Adaptive Memory
+Neuron evolves through usage. It tracks every interaction to refine its internal graph.
+
+### 1. The Feedback Loop
+You can improve Neuron's retrieval accuracy by providing feedback on its results.
+
+```python
+from neuron import AdaptiveMemory
+
+brain = AdaptiveMemory()
+
+# 1. Retrieve with automatic event tracking
+result = brain.retrieve("How do I fix my car?", user_id="user_123")
+event_id = result["event_id"]
+
+# 2. Provide explicit feedback later (Delayed Feedback)
+brain.submit_feedback(event_id, score=1.0) # 1.0 = Success, 0.0 = Failure
+```
+
+### 2. Autonomous Evolution
+If no feedback is provided, Neuron's **Implicit Scorer** evaluates retrievals during the "Sleep" cycle using:
+*   **Coverage**: Did the graph walk find a healthy web of context?
+*   **Confidence**: Is the retrieved data reliable?
+*   **Semantic Judge**: Does the background LLM think the results match the query?
+
+### 3. Strategy Mutation
+Neuron maintains a population of 8 retrieval strategies. Every night, it performs a **Survival of the Fittest** cycle:
+*   **Winners** (High-score strategies) are kept and cloned.
+*   **Losers** (Low-score strategies) are mutated into new configurations (changing depth, k-seeds, and weights).
 **Returns (`Dict`):**
 *   `direct_beliefs`: A list of the Top K nodes found via Vector Search.
 *   `related_context`: A list of nodes discovered by walking across the Graph edges.

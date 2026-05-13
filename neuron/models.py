@@ -1,4 +1,5 @@
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Dict
+from enum import Enum
 from datetime import datetime
 from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, field_validator
@@ -63,3 +64,35 @@ class AbstractionResult(BaseModel):
         if len(v) > settings.max_label_length:
             return v[:settings.max_label_length]
         return v
+
+# --- Adaptive Memory Extensions ---
+
+class ActivityType(str, Enum):
+    WRITE = "write"
+    READ = "read"
+    MAINTENANCE = "maintenance"
+
+class ActivityLog(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
+    user_id: str
+    activity_type: ActivityType
+    details: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class RetrievalStrategy(BaseModel):
+    id: str # Human-readable ID like "strategy_v1_mutant_3"
+    k_seeds: int = 5
+    traversal_depth: int = 3
+    min_edge_weight: float = 0.6
+    fitness_score: float = 0.0
+    generations_survived: int = 0
+    parent_id: Optional[str] = None
+
+class RetrievalEvent(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
+    user_id: str
+    query: str
+    strategy_id: str
+    nodes_found: int
+    score: float = 0.0 # Feedback score (0.0 - 1.0)
+    created_at: datetime = Field(default_factory=datetime.utcnow)

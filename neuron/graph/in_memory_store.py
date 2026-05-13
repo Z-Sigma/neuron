@@ -1,13 +1,28 @@
 from typing import List, Optional, Dict
 from uuid import UUID
 import numpy as np
-from neuron.models import Node, Edge
+from neuron.models import Node, Edge, ActivityLog, RetrievalEvent, RetrievalStrategy
 from neuron.graph.store_interface import GraphStore
+from neuron.config import settings
 
 class InMemoryGraphStore(GraphStore):
     def __init__(self):
         self.nodes: Dict[UUID, Node] = {}
         self.edges: List[Edge] = []
+        self.activity_log: List[ActivityLog] = []
+        self.retrieval_events: List[RetrievalEvent] = []
+        self.strategies: Dict[str, RetrievalStrategy] = {}
+        self._ensure_default_strategy()
+
+    def _ensure_default_strategy(self):
+        if not self.strategies:
+            default = RetrievalStrategy(
+                id="default_v1",
+                k_seeds=settings.k_seeds,
+                traversal_depth=settings.traversal_depth,
+                min_edge_weight=settings.min_edge_weight
+            )
+            self.add_strategy(default)
 
     def setup(self) -> None:
         pass
@@ -117,3 +132,34 @@ class InMemoryGraphStore(GraphStore):
         for edge in edges:
             self.update_edge(edge)
         return edges
+
+    # --- Adaptive Memory Implementation ---
+
+    def log_activity(self, activity: ActivityLog) -> None:
+        self.activity_log.append(activity)
+
+    def log_retrieval_event(self, event: RetrievalEvent) -> None:
+        self.retrieval_events.append(event)
+
+    def add_strategy(self, strategy: RetrievalStrategy) -> None:
+        self.strategies[strategy.id] = strategy
+
+    def get_strategies(self) -> List[RetrievalStrategy]:
+        return list(self.strategies.values())
+
+    def update_strategy(self, strategy: RetrievalStrategy) -> None:
+        if strategy.id in self.strategies:
+            self.strategies[strategy.id] = strategy
+
+    def get_users_needing_maintenance(self, window_hours: int = 24) -> List[str]:
+        # Simple implementation for in-memory
+        users = set()
+        for activity in self.activity_log:
+            users.add(activity.user_id)
+        for event in self.retrieval_events:
+            users.add(event.user_id)
+        return list(users)
+
+    def get_retrieval_events(self, user_id: str, limit: int = 100) -> List[RetrievalEvent]:
+        user_events = [e for e in self.retrieval_events if e.user_id == user_id]
+        return sorted(user_events, key=lambda x: x.created_at, reverse=True)[:limit]

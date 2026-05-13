@@ -69,6 +69,15 @@ class Settings(BaseSettings):
     batch_window_size: int = 20
     max_label_length: int = 2000
     
+    # Adaptive Memory Settings
+    enable_adaptive_memory: bool = False
+    adaptive_mode: str = "auto" # auto, manual, off
+    maintenance_interval_hours: int = 24
+    strategy_population_size: int = 8
+    exploration_rate: float = 0.2 # epsilon for greedy selection
+    min_events_before_evolution: int = 50
+    judge_llm_model: str = "gpt-4o-mini" # Low-cost model for background evaluation
+    
     class Config:
         env_file = ".env"
         extra = "ignore"

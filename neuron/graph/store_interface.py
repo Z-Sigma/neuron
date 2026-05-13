@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict
 from uuid import UUID
-from neuron.models import Node, Edge
+from neuron.models import Node, Edge, ActivityLog, RetrievalEvent, RetrievalStrategy
 
 class GraphStore(ABC):
     @abstractmethod
@@ -67,4 +67,34 @@ class GraphStore(ABC):
 
     @abstractmethod
     def update_edges_batch(self, edges: List[Edge]) -> List[Edge]:
+        pass
+
+    # --- Adaptive Memory Extensions ---
+    
+    @abstractmethod
+    def log_activity(self, activity: ActivityLog) -> None:
+        pass
+
+    @abstractmethod
+    def log_retrieval_event(self, event: RetrievalEvent) -> None:
+        pass
+
+    @abstractmethod
+    def add_strategy(self, strategy: RetrievalStrategy) -> None:
+        pass
+
+    @abstractmethod
+    def get_strategies(self) -> List[RetrievalStrategy]:
+        pass
+
+    @abstractmethod
+    def update_strategy(self, strategy: RetrievalStrategy) -> None:
+        pass
+
+    @abstractmethod
+    def get_users_needing_maintenance(self, window_hours: int = 24) -> List[str]:
+        pass
+
+    @abstractmethod
+    def get_retrieval_events(self, user_id: str, limit: int = 100) -> List[RetrievalEvent]:
         pass

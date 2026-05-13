@@ -3,7 +3,7 @@ from uuid import UUID
 from datetime import datetime
 import logging
 from neo4j import GraphDatabase
-from neuron.models import Node, Edge
+from neuron.models import Node, Edge, ActivityLog, RetrievalEvent, RetrievalStrategy
 from neuron.graph.store_interface import GraphStore
 from neuron.config import settings
 
@@ -35,6 +35,23 @@ class Neo4jGraphStore(GraphStore):
                 """.format(settings=settings))
             except Exception as e:
                 logger.warning(f"Could not create Neo4j vector index: {e}. Falling back to manual search.")
+            
+            # 4. Strategy Management
+            session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (s:RetrievalStrategy) REQUIRE s.id IS UNIQUE")
+            
+            # Initialize default strategy if population is empty
+            self._ensure_default_strategy()
+
+    def _ensure_default_strategy(self):
+        strategies = self.get_strategies()
+        if not strategies:
+            default = RetrievalStrategy(
+                id="default_v1",
+                k_seeds=settings.k_seeds,
+                traversal_depth=settings.traversal_depth,
+                min_edge_weight=settings.min_edge_weight
+            )
+            self.add_strategy(default)
 
     def close(self):
         self.driver.close()
@@ -130,6 +147,82 @@ class Neo4jGraphStore(GraphStore):
         with self.driver.session() as session:
             session.execute_write(self._update_edges_batch_tx, edges)
         return edges
+
+    # --- Adaptive Memory Implementation ---
+
+    def log_activity(self, activity: ActivityLog) -> None:
+        with self.driver.session() as session:
+            session.run("""
+                CREATE (a:ActivityLog {
+                    id: $id, user_id: $user_id, activity_type: $activity_type,
+                    details: $details, created_at: datetime($created_at)
+                })
+            """, id=str(activity.id), user_id=activity.user_id, activity_type=activity.activity_type.value,
+                 details=activity.details, created_at=activity.created_at.isoformat())
+
+    def log_retrieval_event(self, event: RetrievalEvent) -> None:
+        with self.driver.session() as session:
+            session.run("""
+                MATCH (s:RetrievalStrategy {id: $strategy_id})
+                CREATE (e:RetrievalEvent {
+                    id: $id, user_id: $user_id, query: $query,
+                    nodes_found: $nodes_found, score: $score,
+                    created_at: datetime($created_at)
+                })-[:USED_STRATEGY]->(s)
+            """, id=str(event.id), user_id=event.user_id, query=event.query,
+                 strategy_id=event.strategy_id, nodes_found=event.nodes_found,
+                 score=event.score, created_at=event.created_at.isoformat())
+
+    def add_strategy(self, strategy: RetrievalStrategy) -> None:
+        with self.driver.session() as session:
+            session.run("""
+                CREATE (s:RetrievalStrategy {
+                    id: $id, k_seeds: $k_seeds, traversal_depth: $traversal_depth,
+                    min_edge_weight: $min_edge_weight, fitness_score: $fitness_score,
+                    generations_survived: $generations_survived, parent_id: $parent_id
+                })
+            """, id=strategy.id, k_seeds=strategy.k_seeds, traversal_depth=strategy.traversal_depth,
+                 min_edge_weight=strategy.min_edge_weight, fitness_score=strategy.fitness_score,
+                 generations_survived=strategy.generations_survived, parent_id=strategy.parent_id)
+
+    def get_strategies(self) -> List[RetrievalStrategy]:
+        with self.driver.session() as session:
+            result = session.run("MATCH (s:RetrievalStrategy) RETURN s")
+            return [RetrievalStrategy(**dict(record['s'])) for record in result]
+
+    def update_strategy(self, strategy: RetrievalStrategy) -> None:
+        with self.driver.session() as session:
+            session.run("""
+                MATCH (s:RetrievalStrategy {id: $id})
+                SET s.fitness_score = $fitness_score, s.generations_survived = $generations_survived
+            """, id=strategy.id, fitness_score=strategy.fitness_score, generations_survived=strategy.generations_survived)
+
+    def get_users_needing_maintenance(self, window_hours: int = 24) -> List[str]:
+        with self.driver.session() as session:
+            result = session.run("""
+                MATCH (a:ActivityLog) WHERE a.created_at >= datetime() - duration({hours: $window})
+                RETURN DISTINCT a.user_id AS user_id
+                UNION
+                MATCH (e:RetrievalEvent) WHERE e.created_at >= datetime() - duration({hours: $window})
+                RETURN DISTINCT e.user_id AS user_id
+            """, window=window_hours)
+            return [record['user_id'] for record in result]
+
+    def get_retrieval_events(self, user_id: str, limit: int = 100) -> List[RetrievalEvent]:
+        with self.driver.session() as session:
+            result = session.run("""
+                MATCH (e:RetrievalEvent {user_id: $user_id})-[r:USED_STRATEGY]->(s:RetrievalStrategy)
+                RETURN e, s.id AS strategy_id
+                ORDER BY e.created_at DESC LIMIT $limit
+            """, user_id=user_id, limit=limit)
+            events = []
+            for record in result:
+                d = dict(record['e'])
+                d['strategy_id'] = record['strategy_id']
+                d['id'] = UUID(d['id'])
+                # Convert neo4j datetime back if needed, but Pydantic handles isoformat
+                events.append(RetrievalEvent(**d))
+            return events
 
     def traverse_graph(self, start_node_ids: List[UUID], depth: int, user_id: str) -> List[Node]:
         """Performs a multi-hop graph walk in a SINGLE database round-trip."""

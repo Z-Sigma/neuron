@@ -198,7 +198,7 @@ class Memory:
                             from_node_id=new_node.id,
                             to_node_id=nearest_id,
                             relation="refines",
-                            weight=float(similarity)
+                            weight=min(1.0, max(0.0, float(similarity)))
                         ))
                 
                 return new_node
