@@ -65,6 +65,12 @@ neuron is highly modular. Create a `.env` file in your root directory. The syste
 | `min_edge_weight` | Minimum edge similarity score required to follow a graph path | `0.6` |
 | `batch_window_size` | Number of chunks analyzed per LLM call in Deep Batch mode | `20` |
 | `max_label_length` | Maximum character length for knowledge labels before truncation | `2000` |
+| `enable_adaptive_memory` | Enable self-optimizing memory architecture | `False` |
+| `adaptive_mode` | auto (background), manual (on-call), off (logging) | `auto` |
+| `maintenance_interval_hours` | Frequency of "Sleep" cycle in hours | `24` |
+| `strategy_population_size` | Number of retrieval strategies to evolve | `8` |
+| `exploration_rate` | Epsilon for greedy selection (e.g., `0.2`) | `0.2` |
+| `judge_llm_model` | Background model for implicit scoring | `gpt-4o-mini` |
 
 ---
 
@@ -151,6 +157,38 @@ context = brain.retrieve(
 )
 
 print("Direct Matches:")
+# ... (Standard retrieval usage)
+
+---
+
+### 5. Adaptive Memory Workflow (Self-Evolving)
+To use the self-optimizing features, initialize the `AdaptiveMemory` class. This allows the system to learn from your feedback.
+
+```python
+from neuron import AdaptiveMemory
+brain = AdaptiveMemory()
+
+# 1. Retrieve information (returns event_id for feedback)
+result = brain.retrieve("What is Project Stardust?", user_id="user_123")
+event_id = result["event_id"]
+
+# 2. Submit feedback (Delayed Feedback Loop)
+# 1.0 = Success, 0.0 = Failure/Irrelevant
+brain.submit_feedback(event_id, score=1.0) 
+```
+
+### 6. Health & Diagnostics
+Monitor the "Mental Health" of your memory graph.
+
+```python
+# Check node density and confidence levels
+health = brain.graph_health(user_id="user_123")
+print(f"Graph Status: {health['status']}") # 'healthy', 'noisy', or 'decaying'
+
+# See the current state of evolved search strategies
+report = brain.strategy_report()
+print(f"Top Strategy Fitness: {report[0]['fitness_score']}")
+```
 for node in context["direct_beliefs"]:
     print(f"- {node['label']} (Confidence: {node['confidence']})")
 
