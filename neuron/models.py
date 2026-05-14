@@ -81,6 +81,7 @@ class ActivityLog(BaseModel):
 
 class RetrievalStrategy(BaseModel):
     id: str # Human-readable ID like "strategy_v1_mutant_3"
+    user_id: Optional[str] = None
     k_seeds: int = 5
     traversal_depth: int = 3
     min_edge_weight: float = 0.6

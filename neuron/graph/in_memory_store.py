@@ -144,8 +144,10 @@ class InMemoryGraphStore(GraphStore):
     def add_strategy(self, strategy: RetrievalStrategy) -> None:
         self.strategies[strategy.id] = strategy
 
-    def get_strategies(self) -> List[RetrievalStrategy]:
-        return list(self.strategies.values())
+    def get_strategies(self, user_id: Optional[str] = None) -> List[RetrievalStrategy]:
+        if user_id:
+            return [s for s in self.strategies.values() if s.user_id == user_id or s.user_id is None]
+        return [s for s in self.strategies.values() if s.user_id is None]
 
     def update_strategy(self, strategy: RetrievalStrategy) -> None:
         if strategy.id in self.strategies:

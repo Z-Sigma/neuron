@@ -33,7 +33,7 @@ class SleepConsolidator:
             scores = self.scorer.score_events(unscored_events)
             for event, score in zip(unscored_events, scores):
                 event.score = score
-                self.registry.update_fitness(event.strategy_id, score)
+                self.registry.update_fitness(event.strategy_id, score, user_id)
         
         # 3. Reinforce 'Useful' nodes (Myelination)
         # High-scoring events indicate paths that should be strengthened.
@@ -44,7 +44,7 @@ class SleepConsolidator:
 
         # 4. Trigger Strategy Evolution if we have enough data
         if len(events) >= 50:
-            self.registry.evolve()
+            self.registry.evolve(user_id)
 
         # 4. Standard Maintenance (Pruning & Consolidation)
         # We reuse the existing Memory.maintenance logic but triggered automatically

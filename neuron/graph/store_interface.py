@@ -84,7 +84,7 @@ class GraphStore(ABC):
         pass
 
     @abstractmethod
-    def get_strategies(self) -> List[RetrievalStrategy]:
+    def get_strategies(self, user_id: Optional[str] = None) -> List[RetrievalStrategy]:
         pass
 
     @abstractmethod

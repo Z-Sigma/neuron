@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS activity_log (
 
 CREATE TABLE IF NOT EXISTS retrieval_strategies (
     id TEXT PRIMARY KEY,
+    user_id TEXT, -- NULL means global/system strategy
     k_seeds INTEGER NOT NULL,
     traversal_depth INTEGER NOT NULL,
     min_edge_weight FLOAT NOT NULL,
@@ -66,3 +67,4 @@ CREATE TABLE IF NOT EXISTS retrieval_events (
 
 CREATE INDEX IF NOT EXISTS activity_user_idx ON activity_log(user_id);
 CREATE INDEX IF NOT EXISTS retrieval_user_idx ON retrieval_events(user_id);
+CREATE INDEX IF NOT EXISTS strategy_user_idx ON retrieval_strategies(user_id);

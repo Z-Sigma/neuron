@@ -310,18 +310,21 @@ class PostgresGraphStore(GraphStore):
         conn = self.pool.getconn()
         try:
             with conn.cursor() as cur:
-                cur.execute("INSERT INTO retrieval_strategies (id, k_seeds, traversal_depth, min_edge_weight, fitness_score, generations_survived, parent_id) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                    (strategy.id, strategy.k_seeds, strategy.traversal_depth, strategy.min_edge_weight, strategy.fitness_score, strategy.generations_survived, strategy.parent_id))
+                cur.execute("INSERT INTO retrieval_strategies (id, user_id, k_seeds, traversal_depth, min_edge_weight, fitness_score, generations_survived, parent_id) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                    (strategy.id, strategy.user_id, strategy.k_seeds, strategy.traversal_depth, strategy.min_edge_weight, strategy.fitness_score, strategy.generations_survived, strategy.parent_id))
             conn.commit()
         finally:
             self.pool.putconn(conn)
 
-    def get_strategies(self) -> List[RetrievalStrategy]:
+    def get_strategies(self, user_id: Optional[str] = None) -> List[RetrievalStrategy]:
         conn = self.pool.getconn()
         try:
             with conn.cursor() as cur:
-                cur.execute("SELECT id, k_seeds, traversal_depth, min_edge_weight, fitness_score, generations_survived, parent_id FROM retrieval_strategies")
-                return [RetrievalStrategy(id=r[0], k_seeds=r[1], traversal_depth=r[2], min_edge_weight=r[3], fitness_score=r[4], generations_survived=r[5], parent_id=r[6]) for r in cur.fetchall()]
+                if user_id:
+                    cur.execute("SELECT id, user_id, k_seeds, traversal_depth, min_edge_weight, fitness_score, generations_survived, parent_id FROM retrieval_strategies WHERE user_id = %s OR user_id IS NULL", (user_id,))
+                else:
+                    cur.execute("SELECT id, user_id, k_seeds, traversal_depth, min_edge_weight, fitness_score, generations_survived, parent_id FROM retrieval_strategies WHERE user_id IS NULL")
+                return [RetrievalStrategy(id=r[0], user_id=r[1], k_seeds=r[2], traversal_depth=r[3], min_edge_weight=r[4], fitness_score=r[5], generations_survived=r[6], parent_id=r[7]) for r in cur.fetchall()]
         finally:
             self.pool.putconn(conn)
 
@@ -329,8 +332,8 @@ class PostgresGraphStore(GraphStore):
         conn = self.pool.getconn()
         try:
             with conn.cursor() as cur:
-                cur.execute("UPDATE retrieval_strategies SET fitness_score = %s, generations_survived = %s WHERE id = %s",
-                    (strategy.fitness_score, strategy.generations_survived, strategy.id))
+                cur.execute("UPDATE retrieval_strategies SET user_id = %s, k_seeds = %s, traversal_depth = %s, min_edge_weight = %s, fitness_score = %s, generations_survived = %s, parent_id = %s WHERE id = %s",
+                    (strategy.user_id, strategy.k_seeds, strategy.traversal_depth, strategy.min_edge_weight, strategy.fitness_score, strategy.generations_survived, strategy.parent_id, strategy.id))
             conn.commit()
         finally:
             self.pool.putconn(conn)

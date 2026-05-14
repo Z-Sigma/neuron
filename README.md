@@ -1,4 +1,7 @@
-# neuron — Cognitive memory layer
+<div align="center">
+  <img src="logo.png" alt="Neuron Logo" width="200"/>
+  <h1>🧠 neuron | Cognitive Memory Layer</h1>
+</div>
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-purple)](LICENSE)
@@ -41,7 +44,7 @@ flowchart LR
 | **`Embedder`** | Local **SentenceTransformers** when no OpenAI key or provider is `groq` / `ollama`; otherwise OpenAI embeddings if key present; else deterministic **mock** vectors. |
 | **`Retriever`** | `k_seeds` nearest nodes → graph walk up to `traversal_depth` respecting `min_edge_weight` / `max_context_nodes` → **myelination** (edge weights ↑ on use) → `direct_beliefs`, `related_context`, `unresolved_tensions`. Optional **deep recall**: weak active match can **reactivate** a strong archived node. |
 | **`GraphStore`** | Pluggable backend: **Postgres + pgvector**, **Neo4j**, or **in-memory**. |
-| **`AdaptiveMemory`** | Extends `Memory`: logs writes, **ε-greedy strategy selection**, retrieval **events** + `event_id`, `submit_feedback`, `force_sleep`, `strategy_report`, `graph_health`, `search_archive`; optional **background `SleepScheduler`**. |
+| **`AdaptiveMemory`** | Extends `Memory`: logs writes, **personalized strategy selection**, retrieval **events** + `event_id`, `submit_feedback`, `force_sleep`, `strategy_report`, `graph_health`, `search_archive`; optional **background `SleepScheduler`**. |
 | **`CoherenceDaemon`** | LLM-assisted conflict resolution + stale prune + strengthen; used by **HTTP API** consolidate route. |
 | **`SleepConsolidator`** | Offline cycle: implicit scoring of retrieval events, strategy **evolution** when enough events, then `Memory.maintenance`. |
 
@@ -240,10 +243,10 @@ Import from **`neuron`**:
 
 | Method | Returns | Summary |
 | --- | --- | --- |
-| `retrieve(query, user_id, score_feedback=None)` | `dict` | When adaptive enabled: picks strategy, temporarily overrides global `k_seeds` / `traversal_depth`, logs event, restores settings; optional immediate `score_feedback`. |
+| `retrieve(query, user_id, score_feedback=None)` | `dict` | When adaptive enabled: picks **personalized** strategy, temporarily overrides search parameters, logs event; optional immediate `score_feedback`. |
 | `submit_feedback(event_id, score)` | `None` | Updates strategy fitness from stored retrieval event. |
 | `force_sleep(user_id)` | `None` | Runs `SleepConsolidator.perform_sleep_cycle`. |
-| `strategy_report()` | `list[dict]` | `model_dump()` of each `RetrievalStrategy`. |
+| `strategy_report(user_id=None)` | `list[dict]` | `model_dump()` of each `RetrievalStrategy` (filtered by user if provided). |
 | `graph_health(user_id)` | `dict` | `total_nodes`, ratios, `status` in `healthy` / `noisy` / `empty`. |
 | `search_archive(query, user_id)` | `list` | Vector search **deprecated** nodes only. |
 | `process_batch(texts, user_id)` | `dict` | Alias of `process_batch_fast`. |
@@ -300,7 +303,8 @@ python tests/scale_test.py
 
 ## Further reading
 
-See **[documentation.md](documentation.md)** for a deeper technical blueprint (adaptive loop, retrieval walk, known implementation notes).
+- **[api_reference.md](api_reference.md)**: Full API documentation with method signatures and parameter details.
+- **[documentation.md](documentation.md)**: Technical blueprint (adaptive loop, retrieval walk, internal notes).
 
 ---
 

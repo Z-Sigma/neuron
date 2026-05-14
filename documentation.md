@@ -11,7 +11,7 @@ This document mirrors the **current codebase** (Python package `neuron`). For in
 | `neuron/config.py` | `Settings` (Pydantic `BaseSettings`) and singleton `settings`. |
 | `neuron/memory.py` | `Memory` — ingest, retrieve, maintenance, batch paths. |
 | `neuron/adaptive/adaptive_memory.py` | `AdaptiveMemory` — events, feedback, scheduler hook, diagnostics. |
-| `neuron/adaptive/adaptive_engine.py` | `StrategyRegistry` — ε-greedy selection, fitness EMA, mutation `evolve()`. |
+| `neuron/adaptive/adaptive_engine.py` | `StrategyRegistry` — ε-greedy selection, fitness EMA, mutation `evolve(user_id)`. |
 | `neuron/adaptive/consolidator.py` | `SleepConsolidator` — implicit scoring, evolution gate, calls `Memory.maintenance`. |
 | `neuron/adaptive/scorer.py` | `ImplicitScorer` — heuristic scores today; `judge_with_llm` stub. |
 | `neuron/filter/embedder.py` | `Embedder` — local / OpenAI / mock. |
@@ -104,7 +104,7 @@ Edges: batch kNN as fast; **in-batch** entity star links; **global** `get_nodes_
 
 When adaptive is enabled:
 
-1. `StrategyRegistry.select_strategy()` — ε-greedy over persisted strategies.
+1. `StrategyRegistry.select_strategy(user_id)` — ε-greedy over strategies evolved for that specific user.
 2. **Passes strategy parameters to `retrieve`** (k_seeds, traversal_depth, min_edge_weight) instead of mutating global settings. This ensure thread-safety.
 3. Calls `Memory.retrieve`.
 4. Logs `RetrievalEvent` with `nodes_found` = count of `direct_beliefs` + `related_context` entries.
@@ -112,13 +112,13 @@ When adaptive is enabled:
 
 ### 5.3 `submit_feedback`
 
-Scans `get_retrieval_events(None, limit=1000)` in memory — **works fully only for backends that honor `user_id=None` as “all users”** (in-memory); Postgres implementation filters `WHERE user_id = %s`, so delayed feedback may **not find** the event for Postgres until the store API is extended.
+Scans `get_retrieval_events(None, limit=1000)` globally to find the event, then calls `registry.update_fitness(..., user_id)` to ensure personalization.
 
 ### 5.4 `SleepConsolidator.perform_sleep_cycle`
 
 1. Load last 50 retrieval events for user.
 2. “Unscored” = `score == 0.0`; `ImplicitScorer.score_events` assigns heuristic scores; updates strategy fitness.
-3. If `len(events) >= 50`, `registry.evolve()` (clone best, mutate, `add_strategy`).
+3. If `len(events) >= 50`, `registry.evolve(user_id)` (clone best, mutate, `add_strategy`).
 4. Constructs `Memory(store=self.store)` and runs `maintenance(user_id)`.
 5. Logs maintenance activity.
 

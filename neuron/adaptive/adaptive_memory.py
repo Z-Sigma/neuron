@@ -53,7 +53,7 @@ class AdaptiveMemory(Memory):
         strategy_params = {}
         strategy = None
         if settings.enable_adaptive_memory:
-            strategy = self.registry.select_strategy()
+            strategy = self.registry.select_strategy(user_id)
             strategy_params = {
                 "k_seeds": strategy.k_seeds,
                 "traversal_depth": strategy.traversal_depth,
@@ -78,7 +78,7 @@ class AdaptiveMemory(Memory):
             result["event_id"] = str(event.id)
             
             if score_feedback is not None:
-                self.registry.update_fitness(strategy.id, score_feedback)
+                self.registry.update_fitness(strategy.id, score_feedback, user_id)
 
         return result
 
@@ -93,7 +93,7 @@ class AdaptiveMemory(Memory):
         event = next((e for e in events if str(e.id) == event_id), None)
         
         if event:
-            self.registry.update_fitness(event.strategy_id, score)
+            self.registry.update_fitness(event.strategy_id, score, event.user_id)
             logger.info(f"Feedback submitted for event {event_id}: {score}")
         else:
             logger.warning(f"Could not find event {event_id} for feedback submission.")
@@ -102,9 +102,9 @@ class AdaptiveMemory(Memory):
         """Manually trigger a consolidation cycle."""
         self.consolidator.perform_sleep_cycle(user_id)
 
-    def strategy_report(self) -> List[Dict]:
+    def strategy_report(self, user_id: Optional[str] = None) -> List[Dict]:
         """Returns the current state of evolved strategies."""
-        strategies = self.store.get_strategies()
+        strategies = self.store.get_strategies(user_id)
         return [s.model_dump() for s in strategies]
 
     def graph_health(self, user_id: str) -> Dict:

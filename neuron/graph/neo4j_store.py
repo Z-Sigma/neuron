@@ -177,25 +177,33 @@ class Neo4jGraphStore(GraphStore):
         with self.driver.session() as session:
             session.run("""
                 CREATE (s:RetrievalStrategy {
-                    id: $id, k_seeds: $k_seeds, traversal_depth: $traversal_depth,
+                    id: $id, user_id: $user_id, k_seeds: $k_seeds, traversal_depth: $traversal_depth,
                     min_edge_weight: $min_edge_weight, fitness_score: $fitness_score,
                     generations_survived: $generations_survived, parent_id: $parent_id
                 })
-            """, id=strategy.id, k_seeds=strategy.k_seeds, traversal_depth=strategy.traversal_depth,
+            """, id=strategy.id, user_id=strategy.user_id, k_seeds=strategy.k_seeds, traversal_depth=strategy.traversal_depth,
                  min_edge_weight=strategy.min_edge_weight, fitness_score=strategy.fitness_score,
                  generations_survived=strategy.generations_survived, parent_id=strategy.parent_id)
 
-    def get_strategies(self) -> List[RetrievalStrategy]:
+    def get_strategies(self, user_id: Optional[str] = None) -> List[RetrievalStrategy]:
         with self.driver.session() as session:
-            result = session.run("MATCH (s:RetrievalStrategy) RETURN s")
+            if user_id:
+                result = session.run("MATCH (s:RetrievalStrategy) WHERE s.user_id = $user_id OR s.user_id IS NULL RETURN s", user_id=user_id)
+            else:
+                result = session.run("MATCH (s:RetrievalStrategy) WHERE s.user_id IS NULL RETURN s")
             return [RetrievalStrategy(**dict(record['s'])) for record in result]
 
     def update_strategy(self, strategy: RetrievalStrategy) -> None:
         with self.driver.session() as session:
             session.run("""
                 MATCH (s:RetrievalStrategy {id: $id})
-                SET s.fitness_score = $fitness_score, s.generations_survived = $generations_survived
-            """, id=strategy.id, fitness_score=strategy.fitness_score, generations_survived=strategy.generations_survived)
+                SET s.user_id = $user_id, s.k_seeds = $k_seeds, s.traversal_depth = $traversal_depth, 
+                    s.min_edge_weight = $min_edge_weight, s.fitness_score = $fitness_score, 
+                    s.generations_survived = $generations_survived, s.parent_id = $parent_id
+            """, id=strategy.id, user_id=strategy.user_id, k_seeds=strategy.k_seeds, 
+                 traversal_depth=strategy.traversal_depth, min_edge_weight=strategy.min_edge_weight,
+                 fitness_score=strategy.fitness_score, generations_survived=strategy.generations_survived, 
+                 parent_id=strategy.parent_id)
 
     def get_users_needing_maintenance(self, window_hours: int = 24) -> List[str]:
         with self.driver.session() as session:
