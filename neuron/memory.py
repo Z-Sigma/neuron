@@ -1,6 +1,6 @@
 from typing import List, Dict, Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 from neuron.config import settings
@@ -154,7 +154,7 @@ class Memory:
                 node = self.store.get_node(target_id)
                 if node:
                     node.evidence_count += 1
-                    node.last_confirmed_at = datetime.utcnow()
+                    node.last_confirmed_at = datetime.now(timezone.utc)
                     node.confidence = min(node.confidence + 0.05, 0.95)
                     self.store.update_node(node)
 
@@ -208,7 +208,7 @@ class Memory:
             logger.error(f"Memory processing failed: {e}")
             return None
 
-    def retrieve(self, query: str, user_id: str) -> Dict:
+    def retrieve(self, query: str, user_id: str, **kwargs) -> Dict:
         """
         Perform a graph-based retrieval of relevant context for a query.
         
@@ -220,13 +220,15 @@ class Memory:
         Args:
             query: The user's question or topic.
             user_id: Unique identifier to ensure user privacy.
+            **kwargs: Strategy overrides (k_seeds, traversal_depth, etc).
             
         Returns:
             A dictionary containing:
-                - nodes: List of context fragments (label, confidence, evidence).
-                - metadata: Search statistics (hops made, seeds found).
+                - direct_beliefs: Top vector matches (label, confidence, evidence_count).
+                - related_context: Nodes reached via graph traversal from seeds.
+                - unresolved_tensions: Contradicting belief pairs from traversed edges.
         """
-        return self.retriever.retrieve(query, user_id)
+        return self.retriever.retrieve(query, user_id, **kwargs)
 
     def add_manual(self, text: str, user_id: str, confidence: float = 0.8) -> Node:
         """

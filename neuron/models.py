@@ -1,6 +1,6 @@
 from typing import List, Optional, Literal, Dict
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, field_validator
 
@@ -11,8 +11,8 @@ class Node(BaseModel):
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     evidence_count: int = 1
     contradiction_count: int = 0
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    last_confirmed_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_confirmed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     last_contradicted_at: Optional[datetime] = None
     domain_tags: List[str] = []
     entities: List[str] = []
@@ -36,8 +36,8 @@ class Edge(BaseModel):
     relation: Literal["supports", "contradicts", "refines", "depends_on", "derived_from", "temporal_successor", "unresolved_tension"]
     weight: float = Field(default=0.5, ge=0.0, le=1.0)
     evidence_count: int = 1
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    last_updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class SurpriseResult(BaseModel):
     is_novel: bool
@@ -77,7 +77,7 @@ class ActivityLog(BaseModel):
     user_id: str
     activity_type: ActivityType
     details: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class RetrievalStrategy(BaseModel):
     id: str # Human-readable ID like "strategy_v1_mutant_3"
@@ -95,4 +95,4 @@ class RetrievalEvent(BaseModel):
     strategy_id: str
     nodes_found: int
     score: float = 0.0 # Feedback score (0.0 - 1.0)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

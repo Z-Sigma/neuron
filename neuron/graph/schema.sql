@@ -4,7 +4,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS nodes (
     id UUID PRIMARY KEY,
     user_id TEXT NOT NULL,
-    label VARCHAR(150) NOT NULL,
+    label VARCHAR(2000) NOT NULL,
     confidence FLOAT NOT NULL DEFAULT 0.5,
     evidence_count INTEGER NOT NULL DEFAULT 1,
     contradiction_count INTEGER NOT NULL DEFAULT 0,

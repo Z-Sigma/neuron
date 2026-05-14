@@ -228,7 +228,7 @@ class PostgresGraphStore(GraphStore):
                 cur.execute("""
                     SELECT * FROM nodes 
                     WHERE user_id = %s 
-                    AND last_confirmed_at < CURRENT_TIMESTAMP - INTERVAL '%s days'
+                    AND last_confirmed_at < CURRENT_TIMESTAMP - INTERVAL '1 day' * %s
                     AND confidence < %s
                     AND deprecated = FALSE
                 """, (user_id, days, conf_threshold))
@@ -346,13 +346,30 @@ class PostgresGraphStore(GraphStore):
         finally:
             self.pool.putconn(conn)
 
-    def get_retrieval_events(self, user_id: str, limit: int = 100) -> List[RetrievalEvent]:
+    def get_retrieval_events(self, user_id: Optional[str], limit: int = 100) -> List[RetrievalEvent]:
         conn = self.pool.getconn()
         try:
             with conn.cursor() as cur:
-                cur.execute("SELECT id, user_id, query, strategy_id, nodes_found, score, created_at FROM retrieval_events WHERE user_id = %s ORDER BY created_at DESC LIMIT %s",
-                    (user_id, limit))
+                if user_id:
+                    cur.execute("SELECT id, user_id, query, strategy_id, nodes_found, score, created_at FROM retrieval_events WHERE user_id = %s ORDER BY created_at DESC LIMIT %s",
+                        (user_id, limit))
+                else:
+                    cur.execute("SELECT id, user_id, query, strategy_id, nodes_found, score, created_at FROM retrieval_events ORDER BY created_at DESC LIMIT %s",
+                        (limit,))
                 return [RetrievalEvent(id=r[0], user_id=r[1], query=r[2], strategy_id=r[3], nodes_found=r[4], score=r[5], created_at=r[6]) for r in cur.fetchall()]
+        finally:
+            self.pool.putconn(conn)
+
+    def get_contradiction_pairs(self, user_id: str) -> List[tuple]:
+        # Placeholder for daemon-specific query
+        return []
+
+    def get_nodes_for_strengthening(self, user_id: str, min_evidence: int = 5) -> List[Node]:
+        conn = self.pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM nodes WHERE user_id = %s AND evidence_count >= %s AND confidence < 0.95 AND deprecated = FALSE", (user_id, min_evidence))
+                return [self._row_to_node(row) for row in cur.fetchall()]
         finally:
             self.pool.putconn(conn)
 

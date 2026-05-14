@@ -14,15 +14,22 @@ class Retriever:
         self.store = store
         self.embedder = embedder
 
-    def retrieve(self, query: str, user_id: str) -> Dict:
+    def retrieve(self, query: str, user_id: str, **kwargs) -> Dict:
         # 1. Embed query
         query_embedding = self.embedder.embed(query)
         
+        # Strategy overrides (kwargs take precedence over global settings)
+        k_seeds = kwargs.get("k_seeds", settings.k_seeds)
+        traversal_depth = kwargs.get("traversal_depth", settings.traversal_depth)
+        min_edge_weight = kwargs.get("min_edge_weight", settings.min_edge_weight)
+        max_context_nodes = kwargs.get("max_context_nodes", settings.max_context_nodes)
+        min_confidence = kwargs.get("min_confidence", settings.min_confidence)
+
         # 2. Find seed nodes
         seeds = self.store.search_nearest_nodes(
             query_embedding, 
             user_id, 
-            k=settings.k_seeds
+            k=k_seeds
         )
 
         # 2b. Deep Recall Trigger: 
@@ -65,20 +72,20 @@ class Retriever:
         if hasattr(self.store, 'traverse_graph'):
             related_nodes = self.store.traverse_graph(
                 start_node_ids=list(seen_node_ids),
-                depth=settings.traversal_depth,
+                depth=traversal_depth,
                 user_id=user_id
             )
             for node in related_nodes:
                 if node.id not in seen_node_ids:
                     seen_node_ids.add(node.id)
                     all_nodes.append(node)
-                    if len(all_nodes) >= settings.max_context_nodes:
+                    if len(all_nodes) >= max_context_nodes:
                         break
         else:
             # Fallback to iterative layer-by-layer traversal (Slow on Cloud)
             current_layer = list(seeds)
-            for hop in range(settings.traversal_depth):
-                if len(all_nodes) >= settings.max_context_nodes:
+            for hop in range(traversal_depth):
+                if len(all_nodes) >= max_context_nodes:
                     break
                     
                 layer_ids = [n.id for n in current_layer]
@@ -87,7 +94,7 @@ class Retriever:
                 next_layer_candidates = set()
                 for node_id, edges in edges_map.items():
                     for edge in edges:
-                        if edge.weight < settings.min_edge_weight:
+                        if edge.weight < min_edge_weight:
                             continue
                         all_edges.append(edge)
                         self._myelinate_edge(edge)
@@ -104,7 +111,7 @@ class Retriever:
                         seen_node_ids.add(target_node.id)
                         all_nodes.append(target_node)
                         filtered_layer.append(target_node)
-                        if len(all_nodes) >= settings.max_context_nodes: break
+                        if len(all_nodes) >= max_context_nodes: break
                 
                 if not filtered_layer: break
                 current_layer = filtered_layer
@@ -116,7 +123,7 @@ class Retriever:
         # 5. Filter by confidence and format
         direct_beliefs = [
             {"label": n.label, "confidence": n.confidence, "evidence": n.evidence_count}
-            for n in seeds if n.confidence >= settings.min_confidence
+            for n in seeds if n.confidence >= min_confidence
         ]
         
         unresolved_tensions = []

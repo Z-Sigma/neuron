@@ -32,6 +32,8 @@ dependencies = [
     "python-dotenv",
     "sentence-transformers",
     "neo4j",
+    "celery",
+    "redis",
 ]
 
 [project.urls]

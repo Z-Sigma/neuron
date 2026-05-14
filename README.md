@@ -1,301 +1,309 @@
-<div align="center">
-  <img src="logo.png" alt="Neuron Logo" width="200"/>
-  <h1>🧠 neuron | Cognitive Memory Layer</h1>
-</div>
+# neuron — Cognitive memory layer
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue) ![Database](https://img.shields.io/badge/Database-Neo4j%20%7C%20Postgres-success) ![License](https://img.shields.io/badge/License-MIT-purple) ![Status](https://img.shields.io/badge/Status-Production%20Ready-green)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-purple)](LICENSE)
 
-**neuron** is an enterprise-grade, database-agnostic Cognitive Memory Layer designed for Autonomous AI Agents. It simulates human biological memory by automatically abstracting, filtering, connecting, and naturally forgetting data over time.
-
-Instead of a standard Vector DB that just stores isolated text chunks, neuron builds an interconnected **"Semantic Brain"** using Graph databases (Neo4j, Postgres) combined with Vector Search (HNSW) and LLM Intelligence.
+**neuron** is a graph-backed cognitive memory layer for AI agents: it ingests text, abstracts it with an LLM (optional paths skip or batch that step), stores **nodes** (beliefs) and **edges** (relations), and retrieves context with **vector seeds + graph expansion**, optional **adaptive strategy evolution**, and **maintenance / coherence** helpers.
 
 ---
 
-## 🎯 High-Value Use Cases
+## Architecture (how the pieces fit)
 
-By bridging the gap between Vector Retrieval and Graph Traversal, neuron enables entirely new classes of AI applications:
+High-level data flow:
 
-*   **Long-Horizon Autonomous Agents:** Agents that operate for months (like Auto-Researchers or Coding Assistants) need to remember context without exceeding their token limits. neuron's "Synaptic Pruning" ensures they forget useless trivia while retaining core, verified beliefs.
-*   **Hyper-Personalized Tutors:** A tutoring bot can use neuron to map out a student's exact knowledge graph, tracking what concepts they understand (direct beliefs) and what concepts they are struggling with (unresolved tensions), allowing for dynamic curriculum adjustments.
-*   **Customer Support Oracles:** Support bots can instantly ingest thousands of PDF manuals using the *Fast Batch* workflow. When a user asks a complex troubleshooting question, the bot uses *Graph Traversal* to pull in context from 3 different manuals simultaneously.
-*   **Multi-Agent Communication:** Because neuron supports `user_id` isolation, a massive Multi-Agent system can use a single centralized Neo4j cloud instance to store isolated, private memories for thousands of different agents simultaneously.
-
----
-
-## ⚡ Quick Start
-
-### 1. Installation
-
-**Option A: Install directly into your project (Without cloning)**
-You can install neuron directly from GitHub into your Python environment. This keeps your project folder clean:
-```bash
-pip install git+https://github.com/Z-Sigma/neuron.git
+```mermaid
+flowchart LR
+  subgraph ingest["Ingest"]
+    T[Text / chunks]
+    SF[SurpriseFilter]
+    AE[AbstractionEngine]
+    E[Embedder]
+    GS[(GraphStore)]
+    T --> SF
+    SF --> AE
+    AE --> E
+    E --> GS
+  end
+  subgraph retrieve["Retrieve"]
+    Q[Query]
+    R[Retriever]
+    Q --> E
+    E --> R
+    R --> GS
+  end
 ```
 
-**Option B: Clone for Local Development**
-If you want to view or edit the neuron source code locally:
+| Layer | Role |
+| --- | --- |
+| **`Memory`** | Main façade: `process`, `retrieve`, batch ingest, `maintenance`, `add_manual`. Wires `GraphStore`, `Embedder`, `SurpriseFilter`, `AbstractionEngine`, `Retriever`. |
+| **`SurpriseFilter`** | Embeds input, compares to nearest stored nodes; decides novelty vs **confirmation** (boost existing node) using `base_novelty_threshold` and `confirmation_range_*`. |
+| **`AbstractionEngine`** | Calls configured **LLM provider** with `abstraction_prompt` / `batch_abstraction_prompt`; returns structured `AbstractionResult` (JSON). |
+| **`Embedder`** | Local **SentenceTransformers** when no OpenAI key or provider is `groq` / `ollama`; otherwise OpenAI embeddings if key present; else deterministic **mock** vectors. |
+| **`Retriever`** | `k_seeds` nearest nodes → graph walk up to `traversal_depth` respecting `min_edge_weight` / `max_context_nodes` → **myelination** (edge weights ↑ on use) → `direct_beliefs`, `related_context`, `unresolved_tensions`. Optional **deep recall**: weak active match can **reactivate** a strong archived node. |
+| **`GraphStore`** | Pluggable backend: **Postgres + pgvector**, **Neo4j**, or **in-memory**. |
+| **`AdaptiveMemory`** | Extends `Memory`: logs writes, **ε-greedy strategy selection**, retrieval **events** + `event_id`, `submit_feedback`, `force_sleep`, `strategy_report`, `graph_health`, `search_archive`; optional **background `SleepScheduler`**. |
+| **`CoherenceDaemon`** | LLM-assisted conflict resolution + stale prune + strengthen; used by **HTTP API** consolidate route. |
+| **`SleepConsolidator`** | Offline cycle: implicit scoring of retrieval events, strategy **evolution** when enough events, then `Memory.maintenance`. |
+
+Extension entry points (dependency injection on `Memory.__init__`): pass a custom **`GraphStore`**, **`Embedder`**, or **`AbstractionEngine`** if you implement the same interfaces.
+
+---
+
+## Installation
+
+**From PyPI / local checkout (editable):**
+
 ```bash
-git clone https://github.com/Z-Sigma/neuron.git
 cd neuron
 pip install -e .
 ```
 
-### 2. Configuration (`.env`)
-neuron is highly modular. Create a `.env` file in your root directory. The system will automatically load these parameters.
+Requires **Python 3.11+** (see `pyproject.toml`).
 
-**Complete List of Environment Variables:**
-
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `llm_provider` | The AI provider for abstraction (`groq`, `openai`, `anthropic`, `ollama`) | `"groq"` |
-| `groq_api_key` | Required if using Groq | `None` |
-| `openai_api_key` | Required if using OpenAI | `None` |
-| `anthropic_api_key` | Required if using Anthropic | `None` |
-| `local_llm_model` | The specific model name to use for abstraction | `"llama-3.3-70b-versatile"` |
-| `embedding_model_name` | The model used for vectors (Local HuggingFace or OpenAI) | `"all-MiniLM-L6-v2"` |
-| `embedding_dimension` | Vector dimension size (must match the model) | `384` |
-| `graph_store_type` | The database backend (`neo4j`, `postgres`, `in_memory`) | `"postgres"` |
-| `database_url` | Connection string for Postgres | `"postgresql://..."` |
-| `neo4j_uri` | Connection string for Neo4j | `"bolt://localhost:7687"` |
-| `neo4j_user` | Username for Neo4j | `"neo4j"` |
-| `neo4j_password` | Password for Neo4j | `"password"` |
-| `k_seeds` | The number of initial nodes found via Vector Search | `5` |
-| `traversal_depth` | How many Graph Hops outward the algorithm should walk | `3` |
-| `max_context_nodes` | The absolute maximum number of nodes returned to the LLM | `50` |
-| `min_edge_weight` | Minimum edge similarity score required to follow a graph path | `0.6` |
-| `batch_window_size` | Number of chunks analyzed per LLM call in Deep Batch mode | `20` |
-| `max_label_length` | Maximum character length for knowledge labels before truncation | `2000` |
-| `enable_adaptive_memory` | Enable self-optimizing memory architecture | `False` |
-| `adaptive_mode` | auto (background), manual (on-call), off (logging) | `auto` |
-| `maintenance_interval_hours` | Frequency of "Sleep" cycle in hours | `24` |
-| `strategy_population_size` | Number of retrieval strategies to evolve | `8` |
-| `exploration_rate` | Epsilon for greedy selection (e.g., `0.2`) | `0.2` |
-| `judge_llm_model` | Background model for implicit scoring | `gpt-4o-mini` |
+**Core runtime deps** include FastAPI, uvicorn, pydantic-settings, psycopg2, pgvector, openai, anthropic, numpy, sentence-transformers, neo4j, etc.
 
 ---
 
-## 🧠 Core Methods (The API)
+## Configuration
 
-The core interface is the `Memory` object.
+Settings load from **environment variables** and optional **`.env`** (via `pydantic-settings`). Names follow the usual rule: field `llm_provider` → env `LLM_PROVIDER` (case-insensitive).
 
-```python
-from neuron import Memory
+### Exhaustive settings table
 
-# Automatically initializes based on your .env configuration
-brain = Memory()
-```
+| Field / env | Type | Default | Purpose |
+| --- | --- | --- | --- |
+| `LLM_PROVIDER` | str | `groq` | Abstraction chat provider: `openai`, `anthropic`, `groq`, `ollama`. |
+| `OPENAI_API_KEY` | str? | `None` | OpenAI API key (embeddings and/or `openai` provider). |
+| `ANTHROPIC_API_KEY` | str? | `None` | Anthropic key for `anthropic` provider. |
+| `GROQ_API_KEY` | str? | `None` | Groq key for `groq` provider. |
+| `LOCAL_LLM_MODEL` | str | `llama-3.3-70b-versatile` | Model id for Groq/Ollama OpenAI-compatible chat. |
+| `DEFAULT_MODEL` | str | `gpt-4o-mini` | Chat model when `LLM_PROVIDER=openai`. |
+| `ABSTRACTION_MODEL` | str | `claude-3-5-sonnet-20240620` | Model when `LLM_PROVIDER=anthropic`. |
+| `EMBEDDING_MODEL_NAME` | str | `all-MiniLM-L6-v2` | Local HF model name, or must contain `text-embedding` to use as OpenAI embedding model name. |
+| `EMBEDDING_DIMENSION` | int | `384` | Vector size (must match embedding model; Neo4j vector index uses this). |
+| `ABSTRACTION_PROMPT` | str | (long default in code) | System instructions + JSON shape for **single** chunk abstraction. |
+| `BATCH_ABSTRACTION_PROMPT` | str | (long default in code) | Same for **windowed batch** extraction in `process_batch_deep`. |
+| `GRAPH_STORE_TYPE` | str | `postgres` | `postgres`, `neo4j`, or `in_memory`. |
+| `DATABASE_URL` | str | `postgresql://postgres:postgres@localhost:5432/neuron` | Postgres connection string. |
+| `NEO4J_URI` | str | `bolt://localhost:7687` | Neo4j Bolt URI. |
+| `NEO4J_USER` | str | `neo4j` | Neo4j user. |
+| `NEO4J_PASSWORD` | str | `password` | Neo4j password. |
+| `REDIS_HOST` | str | `localhost` | Redis host for Celery broker URL in `neuron.daemon.tasks` (`redis://HOST:6379/0`). |
+| `BASE_NOVELTY_THRESHOLD` | float | `0.3` | Surprise filter: `novelty_score >= threshold` → treat as novel (new node path). `novelty_score = 1 - max_cosine_sim`. |
+| `CONFIRMATION_RANGE_START` | float | `0.75` | If nearest similarity in `[start, end]`, node ids go to **confirmation** list. |
+| `CONFIRMATION_RANGE_END` | float | `0.90` | Upper bound for confirmation band. |
+| `K_SEEDS` | int | `5` | Vector nearest neighbors used as retrieval seeds (and surprise search breadth). |
+| `TRAVERSAL_DEPTH` | int | `3` | BFS hops for graph context (or native `traverse_graph` on Neo4j). |
+| `MAX_CONTEXT_NODES` | int | `50` | Cap on nodes collected during retrieval. |
+| `MIN_EDGE_WEIGHT` | float | `0.6` | Edges below this weight are skipped when walking the graph. |
+| `MIN_CONFIDENCE` | float | `0.35` | Seeds below this confidence are omitted from `direct_beliefs`. |
+| `BATCH_WINDOW_SIZE` | int | `20` | Default LLM window size in `process_batch_deep`. |
+| `MAX_LABEL_LENGTH` | int | `2000` | Truncate labels on `Node` / `AbstractionResult` validation. |
+| `ENABLE_ADAPTIVE_MEMORY` | bool | `false` | Turn on adaptive logging, events, scheduler (with `AdaptiveMemory`). |
+| `ADAPTIVE_MODE` | str | `auto` | With `AdaptiveMemory`: `auto` starts `SleepScheduler`; `manual` relies on `force_sleep`; `off` still respects `enable_adaptive_memory` for other hooks (scheduler only starts when `auto`). |
+| `MAINTENANCE_INTERVAL_HOURS` | int | `24` | Background sleep cycle interval (also window for “users needing maintenance” in Postgres). |
+| `STRATEGY_POPULATION_SIZE` | int | `8` | Intended population cap (registry reads `settings`; stores seed default strategy). |
+| `EXPLORATION_RATE` | float | `0.2` | ε in ε-greedy strategy selection. |
+| `MIN_EVENTS_BEFORE_EVOLUTION` | int | `50` | Defined in settings; consolidator currently evolves when `len(events) >= 50` (same intent). |
+| `JUDGE_LLM_MODEL` | str | `gpt-4o-mini` | Reserved for LLM judging; `ImplicitScorer` currently uses heuristics. |
 
-### 1. The Chat Workflow (Option 1: Maximum Intelligence)
-Use this when you want the AI to read a single sentence, extract the core facts, filter duplicates, and automatically draw semantic graph edges. This is ideal for chatbots or live Agent interaction.
-
-```python
-# The Brain processes the sentence, extracts the meaning, embeds it, and stores it.
-brain.process(
-    text="My secret project is called Stardust.", 
-    user_id="user_123"
-)
-```
-**Arguments:**
-*   `text` *(str)*: The raw input string to be abstracted.
-*   `user_id` *(str)*: A unique identifier for the user (to support multi-tenant graph isolation).
-
----
-
-### 2. The Bulk Injection Workflow (Option 2.5: Fast Intelligence)
-If you have a 500-page PDF and want to upload it instantly, use `process_batch_fast`. It bypasses the slow LLM, computes a local matrix to drop duplicate chunks, automatically generates mathematical k-NN edges, and blasts the raw data into the cloud in seconds.
-
-```python
-pdf_chunks = ["Paragraph 1", "Paragraph 2", "Paragraph 3"]
-
-# Pushes thousands of nodes instantly with full Graph Wiring
-brain.process_batch_fast(
-    texts=pdf_chunks, 
-    user_id="user_123",
-    deduplication_threshold=0.95, 
-    knn_edges=3 
-)
-```
-**Arguments:**
-*   `texts` *(List[str])*: A list of raw text chunks to be embedded and stored.
-*   `user_id` *(str)*: A unique identifier for the user.
-*   `deduplication_threshold` *(float, default=0.95)*: The Cosine Similarity threshold above which a chunk is mathematically considered a duplicate and dropped.
-*   `knn_edges` *(int, default=3)*: The number of closest semantic neighbors within the batch that each node should automatically draw an Edge to.
+In code, access the same values as attributes on **`from neuron import settings`** (e.g. `settings.k_seeds`).
 
 ---
 
-### 3. The Batched Enrichment Workflow (Option 2.75: Deep Batch)
-This is the middle-ground for deep research. It uses the same fast deduplication as the "Fast" mode, but then uses **Windowed LLM Extraction**. It sends 20 chunks at a time to the LLM to extract metadata (entities, tags, labels). This provides high-signal intelligence at a 90% lower cost than `process()`.
+## How to run
 
-```python
-research_data = ["Fact about SpaceX", "Fact about Mars", "Fact about Starship"]
+### 1. Local Python (library + demos)
 
-# Enriches thousands of chunks with LLM metadata at scale
-brain.process_batch_deep(
-    texts=research_data, 
-    user_id="user_123",
-    window_size=20, # How many chunks to process per LLM call
-    deduplication_threshold=0.95,
-    knn_edges=3
-)
-```
-**Arguments:**
-*   `texts` *(List[str])*: A list of raw text chunks.
-*   `user_id` *(str)*: A unique identifier for the user.
-*   `window_size` *(int, default=20)*: Number of chunks sent in a single LLM prompt. Higher values save more money but may reduce NER precision.
-*   `deduplication_threshold` *(float, default=0.95)*: Similarity threshold for local deduplication.
-*   `knn_edges` *(int, default=3)*: Number of semantic neighbors to link within the batch.
-
----
-
-### 4. The Retrieval Workflow (Deep Recall)
-When you want to search the brain, neuron uses a Hybrid Search. It uses HNSW to find the closest vector "Seed", and then uses Graph algorithms to walk outward, gathering full surrounding context.
-
-```python
-context = brain.retrieve(
-    query="What is the secret project?", 
-    user_id="user_123"
-)
-
-print("Direct Matches:")
-# ... (Standard retrieval usage)
-
----
-
-### 5. Adaptive Memory Workflow (Self-Evolving)
-To use the self-optimizing features, initialize the `AdaptiveMemory` class. This allows the system to learn from your feedback.
-
-```python
-from neuron import AdaptiveMemory
-brain = AdaptiveMemory()
-
-# 1. Retrieve information (returns event_id for feedback)
-result = brain.retrieve("What is Project Stardust?", user_id="user_123")
-event_id = result["event_id"]
-
-# 2. Submit feedback (Delayed Feedback Loop)
-# 1.0 = Success, 0.0 = Failure/Irrelevant
-brain.submit_feedback(event_id, score=1.0) 
-```
-
-### 6. Health & Diagnostics
-Monitor the "Mental Health" of your memory graph.
-
-```python
-# Check node density and confidence levels
-health = brain.graph_health(user_id="user_123")
-print(f"Graph Status: {health['status']}") # 'healthy', 'noisy', or 'decaying'
-
-# See the current state of evolved search strategies
-report = brain.strategy_report()
-print(f"Top Strategy Fitness: {report[0]['fitness_score']}")
-```
-for node in context["direct_beliefs"]:
-    print(f"- {node['label']} (Confidence: {node['confidence']})")
-
-print("Associated Graph Context:")
-for node in context["related_context"]:
-    print(f"- {node['label']} (Confidence: {node['confidence']})")
-```
-**Arguments:**
-*   `query` *(str)*: The question or context the Agent is searching for.
-*   `user_id` *(str)*: A unique identifier for the user.
-MAX_LABEL_LENGTH=2000 # Configurable limit for node labels
-
-# Adaptive Memory Settings (Optional)
-ENABLE_ADAPTIVE_MEMORY=True # Set to False to disable all adaptive features
-ADAPTIVE_MODE=auto # auto, manual, off
-MAINTENANCE_INTERVAL_HOURS=24
-STRATEGY_POPULATION_SIZE=8
-EXPLORATION_RATE=0.2 # Epsilon-greedy exploration
-JUDGE_LLM_MODEL=gpt-4o-mini # Background scoring model
-
-## Adaptive Memory
-Neuron evolves through usage. It tracks every interaction to refine its internal graph.
-
-### 1. The Feedback Loop
-You can improve Neuron's retrieval accuracy by providing feedback on its results.
-
-```python
-from neuron import AdaptiveMemory
-
-brain = AdaptiveMemory()
-
-# 1. Retrieve with automatic event tracking
-result = brain.retrieve("How do I fix my car?", user_id="user_123")
-event_id = result["event_id"]
-
-# 2. Provide explicit feedback later (Delayed Feedback)
-brain.submit_feedback(event_id, score=1.0) # 1.0 = Success, 0.0 = Failure
-```
-
-### 2. Autonomous Evolution
-If no feedback is provided, Neuron's **Implicit Scorer** evaluates retrievals during the "Sleep" cycle using:
-*   **Coverage**: Did the graph walk find a healthy web of context?
-*   **Confidence**: Is the retrieved data reliable?
-*   **Semantic Judge**: Does the background LLM think the results match the query?
-
-### 3. Strategy Mutation
-Neuron maintains a population of 8 retrieval strategies. Every night, it performs a **Survival of the Fittest** cycle:
-*   **Winners** (High-score strategies) are kept and cloned.
-*   **Losers** (Low-score strategies) are mutated into new configurations (changing depth, k-seeds, and weights).
-**Returns (`Dict`):**
-*   `direct_beliefs`: A list of the Top K nodes found via Vector Search.
-*   `related_context`: A list of nodes discovered by walking across the Graph edges.
-*   `unresolved_tensions`: Any directly contradicting facts discovered.
-
----
-
-### 5. Synaptic Pruning (Lifecycle Maintenance)
-Turn your database into a living brain. Run this periodically via a cron job or Celery task. It scans the database, decays the confidence score of unused facts, and eventually "archives" them to save space and context bloat.
-
-```python
-# Weakens memories that haven't been used in 30 days
-brain.maintenance(
-    user_id="user_123", 
-    stale_days=30,
-    min_confidence=0.35,
-    consolidate=True
-)
-```
-**Arguments:**
-*   `user_id` *(str)*: A unique identifier for the user.
-*   `stale_days` *(int, default=30)*: Number of days since a memory was last recalled before it starts losing confidence points.
-*   `min_confidence` *(float, default=0.35)*: The absolute minimum confidence score. If a memory drops below this, it is soft-deleted/archived.
-*   `consolidate` *(bool, default=True)*: If True, the Layer will attempt to merge highly similar clusters of memories together to free up database space.
-
----
-
-## 🚀 How to Run the Tests
-
-To verify that the system is fully operational on your specific cloud setup, run the included examples:
-
-**1. The Cognitive Demo (`demo.py`)**
-Tests the AI's ability to abstract, forget, and deep-recall specific facts.
 ```bash
+pip install -e .
+# Optional: copy and edit env
+copy .env.example .env   # Windows — or create .env manually
 python examples/demo.py
+python examples/example_usage.py
 ```
 
-**2. The Speed Benchmark (`scale_test.py`)**
-Tests your database's speed by generating 2,000 synthetic nodes and 10,000 edges, blasting them into the cloud, and timing the HNSW retrieval.
+Set **`GRAPH_STORE_TYPE=in_memory`** for zero DB setup (Postgres connection failure also falls back to in-memory when postgres is selected but unreachable).
+
+### 2. Postgres + pgvector (recommended for persistence)
+
 ```bash
+docker compose up -d db
+# Ensure DATABASE_URL matches compose (postgres/postgres, db neuron)
+set DATABASE_URL=postgresql://postgres:postgres@localhost:5432/neuron
+set GRAPH_STORE_TYPE=postgres
+```
+
+Postgres `setup()` runs `neuron/graph/schema.sql` (path relative to process **current working directory**; run from repo root).
+
+### 3. HTTP API (FastAPI)
+
+```bash
+set DATABASE_URL=postgresql://postgres:postgres@localhost:5432/neuron
+set GRAPH_STORE_TYPE=postgres
+python -m uvicorn neuron.api.server:app --host 0.0.0.0 --port 8000
+```
+
+Docker: use **`docker compose`**; ensure the API image command overrides the Dockerfile default if it still points at another module — run explicitly:
+
+```bash
+docker compose run --rm api uvicorn neuron.api.server:app --host 0.0.0.0 --port 8000
+```
+
+Endpoints:
+
+| Method | Path | Body / params | Response |
+| --- | --- | --- | --- |
+| POST | `/v1/memory/process` | `{ "text", "user_id" }` | `{ "status", "node" }` — node may be `null` if filtered |
+| POST | `/v1/memory/retrieve` | `{ "query", "user_id" }` | `{ "status", "context" }` — shape below |
+| POST | `/v1/memory/consolidate/{user_id}` | — | Runs `CoherenceDaemon.run_cycle` |
+| GET | `/health` | — | `{ "status": "healthy" }` |
+
+### 4. CLI
+
+```bash
+neuron init
+```
+
+Creates **`.env.example`** in the current directory with starter keys.
+
+### 5. Neo4j
+
+```bash
+set GRAPH_STORE_TYPE=neo4j
+set NEO4J_URI=bolt://localhost:7687
+set NEO4J_USER=neo4j
+set NEO4J_PASSWORD=password
+```
+
+Neo4j provides **`traverse_graph`** for faster multi-hop reads; Postgres uses layered BFS in Python.
+
+### 6. Celery (optional)
+
+`neuron.daemon.tasks` defines a Celery app with broker `redis://{REDIS_HOST}:6379/0`. Run Redis and wire workers separately if you use this.
+
+---
+
+## Usage modes (ingest)
+
+| Mode | Method | LLM | Typical use |
+| --- | --- | --- | --- |
+| **Interactive / chat** | `Memory.process(text, user_id)` | Yes (`extract`) | Single utterances; surprise filter + entity/similarity linking. |
+| **Fast bulk** | `Memory.process_batch_fast(texts, user_id, deduplication_threshold=0.95, knn_edges=3)` | No | Large corpora: embed all, dedupe by cosine matrix, kNN edges, bulk write. |
+| **Deep bulk** | `Memory.process_batch_deep(texts, user_id, window_size=None, ...)` | Yes (`batch_extract` per window) | Semantically rich corpora after dedupe; entity hub linking across batch + existing graph. |
+| **Manual seed** | `Memory.add_manual(text, user_id, confidence=0.8)` | Yes | Bypass surprise filter; still abstracts and stores. |
+
+`AdaptiveMemory.process_batch(...)` is an **alias** for `process_batch_fast`.
+
+---
+
+## Retrieval result shape
+
+`Memory.retrieve` / API return:
+
+```python
+{
+  "direct_beliefs": [{"label", "confidence", "evidence"}, ...],
+  "related_context": [{"label", "confidence"}, ...],
+  "unresolved_tensions": [{"belief_a", "belief_b", "relation"}, ...],
+}
+```
+
+With **`ENABLE_ADAPTIVE_MEMORY=true`** and **`AdaptiveMemory.retrieve`**, the dict also includes **`"event_id"`** (string UUID) for `submit_feedback`.
+
+---
+
+## Public Python API (user-facing)
+
+Import from **`neuron`**:
+
+| Symbol | Description |
+| --- | --- |
+| `Memory` | Primary class — see methods below. |
+| `AdaptiveMemory` | Subclass with adaptive features. |
+| `Node`, `Edge` | Pydantic models for graph primitives. |
+| `settings` | Live `Settings` singleton from env / `.env`. |
+
+### `Memory` methods
+
+| Method | Returns | Summary |
+| --- | --- | --- |
+| `__init__(store=None, embedder=None, engine=None)` | `Memory` | Default store from `GRAPH_STORE_TYPE`; default embedder/engine from settings. |
+| `process(text, user_id)` | `Optional[Node]` | Surprise → maybe confirm/boost → else abstract, add node, add edges. |
+| `retrieve(query, user_id)` | `dict` | Hybrid retrieval; see shape above. |
+| `add_manual(text, user_id, confidence=0.8)` | `Node` | Skip surprise filter. |
+| `process_batch_fast(texts, user_id, ...)` | `dict` | `nodes_added`, `edges_added`, `duplicates_dropped`. |
+| `process_batch_deep(texts, user_id, window_size=None, ...)` | `dict` | Same stats keys as fast batch. |
+| `maintenance(user_id, stale_days=30, min_confidence=0.35, consolidate=True)` | `dict` | Prune stale low-confidence nodes; optional entity-cluster consolidation via LLM. |
+
+### `AdaptiveMemory` additional methods
+
+| Method | Returns | Summary |
+| --- | --- | --- |
+| `retrieve(query, user_id, score_feedback=None)` | `dict` | When adaptive enabled: picks strategy, temporarily overrides global `k_seeds` / `traversal_depth`, logs event, restores settings; optional immediate `score_feedback`. |
+| `submit_feedback(event_id, score)` | `None` | Updates strategy fitness from stored retrieval event. |
+| `force_sleep(user_id)` | `None` | Runs `SleepConsolidator.perform_sleep_cycle`. |
+| `strategy_report()` | `list[dict]` | `model_dump()` of each `RetrievalStrategy`. |
+| `graph_health(user_id)` | `dict` | `total_nodes`, ratios, `status` in `healthy` / `noisy` / `empty`. |
+| `search_archive(query, user_id)` | `list` | Vector search **deprecated** nodes only. |
+| `process_batch(texts, user_id)` | `dict` | Alias of `process_batch_fast`. |
+
+`graph_health` and `strategy_report` exist only on **`AdaptiveMemory`**, not on base `Memory`.
+
+---
+
+## Framework integrations
+
+| Module | Class | Behavior |
+| --- | --- | --- |
+| `neuron.integrations.langchain` | `NEURONMemory` | LangChain `BaseMemory`: `load_memory_variables` calls `retrieve`; `save_context` calls `process` on user input. |
+| `neuron.integrations.langgraph` | `NEURONCheckpointer` | Skeleton checkpointer: `get_tuple` / `put` round-trip through `Memory`. |
+| `neuron.integrations.llamaindex` | `NEURONMemoryStore` | `get` / `put` bridge to `Memory`. |
+| `neuron.integrations.crewai` | `NEURONSharedMemory` | `save` / `search` for crew-scoped `user_id` string (`crew_id`). |
+
+---
+
+## TypeScript HTTP client
+
+`neuron/sdk-ts/memory.ts` exports **`Memory`**: `process`, `retrieve`, `consolidate` against the FastAPI base URL.
+
+---
+
+## GraphStore interface (advanced / custom backends)
+
+Implement `neuron.graph.store_interface.GraphStore` — abstract methods include `setup`, `add_node`, `add_nodes_batch`, `search_nearest_nodes`, `search_deprecated_nodes`, edge CRUD, `list_nodes`, `get_nodes_by_entity`, adaptive hooks (`log_activity`, `log_retrieval_event`, strategies, `get_retrieval_events`, `get_users_needing_maintenance`), plus **`get_stale_nodes`**, and for coherence **`get_contradiction_pairs`**, **`get_nodes_for_strengthening`**. Neo4j adds **`traverse_graph`**.
+
+---
+
+## Tests
+
+```bash
+pip install -e .
+pytest tests/ -q   # if pytest configured; else:
+python tests/batch_fast_test.py
+python tests/adaptive_test.py
 python tests/scale_test.py
 ```
 
-**3. The Option 2.5 Batch Test (`batch_fast_test.py`)**
-Tests the high-speed local matrix mathematics to ensure duplicates are accurately dropped and semantic edges are generated locally.
-```bash
-python tests/batch_fast_test.py
-```
+---
+
+## Modifying behavior for your workload
+
+- **Cheaper ingest**: use `process_batch_fast` or increase `process_batch_deep` `deduplication_threshold` to drop more near-duplicates; increase `window_size` to fewer LLM calls (less precise NER risk).
+- **Narrower memory**: raise `BASE_NOVELTY_THRESHOLD` so only more novel text creates new nodes; widen confirmation band to merge more into existing beliefs.
+- **Richer retrieval context**: increase `K_SEEDS` and/or `TRAVERSAL_DEPTH` / `MAX_CONTEXT_NODES`; lower `MIN_EDGE_WEIGHT` to follow weaker edges (noisier).
+- **Stricter context**: lower depth and seeds; raise `MIN_EDGE_WEIGHT` and `MIN_CONFIDENCE`.
+- **Adaptive / scheduled tuning**: set `ENABLE_ADAPTIVE_MEMORY=true`, use `AdaptiveMemory`, choose `ADAPTIVE_MODE=manual` and call `force_sleep` off-peak; tune `EXPLORATION_RATE` and `MAINTENANCE_INTERVAL_HOURS`.
+- **Custom prompts**: override `ABSTRACTION_PROMPT` / `BATCH_ABSTRACTION_PROMPT` in `.env` (escape quotes carefully) or subclass `AbstractionEngine`.
 
 ---
 
-## 🤝 Collaborations & Copyright
+## Further reading
 
-**Copyright © 2026 Z-Sigma.** All rights reserved.
+See **[documentation.md](documentation.md)** for a deeper technical blueprint (adaptive loop, retrieval walk, known implementation notes).
 
-neuron is open-source under the MIT License. We actively welcome contributions from the community! If you are a developer or researcher interested in Autonomous Agents, Graph Theory, or Cognitive Architecture, please feel free to:
-1. **Fork the repository** and submit Pull Requests.
-2. **Open an Issue** for feature requests or bug reports.
-3. Reach out directly for enterprise collaborations or integration partnerships.
+---
 
-*Built to push the boundaries of Agentic Memory.*
+## License
+
+MIT. Copyright © 2026 Z-Sigma (per project notice).

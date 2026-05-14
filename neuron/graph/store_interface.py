@@ -96,5 +96,21 @@ class GraphStore(ABC):
         pass
 
     @abstractmethod
-    def get_retrieval_events(self, user_id: str, limit: int = 100) -> List[RetrievalEvent]:
+    def get_retrieval_events(self, user_id: Optional[str], limit: int = 100) -> List[RetrievalEvent]:
         pass
+
+    @abstractmethod
+    def get_stale_nodes(self, user_id: str, days: int = 30, conf_threshold: float = 0.35) -> List[Node]:
+        pass
+
+    @abstractmethod
+    def get_contradiction_pairs(self, user_id: str) -> List[tuple]:
+        pass
+
+    @abstractmethod
+    def get_nodes_for_strengthening(self, user_id: str, min_evidence: int = 5) -> List[Node]:
+        pass
+
+    def traverse_graph(self, start_node_ids: List[UUID], depth: int, user_id: str) -> List[Node]:
+        """Optional optimized traversal. Returns nodes only by default."""
+        return []

@@ -160,6 +160,9 @@ class InMemoryGraphStore(GraphStore):
             users.add(event.user_id)
         return list(users)
 
-    def get_retrieval_events(self, user_id: str, limit: int = 100) -> List[RetrievalEvent]:
-        user_events = [e for e in self.retrieval_events if e.user_id == user_id]
+    def get_retrieval_events(self, user_id: Optional[str], limit: int = 100) -> List[RetrievalEvent]:
+        if user_id:
+            user_events = [e for e in self.retrieval_events if e.user_id == user_id]
+        else:
+            user_events = self.retrieval_events
         return sorted(user_events, key=lambda x: x.created_at, reverse=True)[:limit]

@@ -50,39 +50,35 @@ class AdaptiveMemory(Memory):
 
     def retrieve(self, query: str, user_id: str, score_feedback: Optional[float] = None) -> Dict:
         # 1. Strategy Selection (Adaptive)
+        strategy_params = {}
+        strategy = None
         if settings.enable_adaptive_memory:
             strategy = self.registry.select_strategy()
-            # Apply strategy settings temporarily
-            # Note: This is a simplification; a full implementation would pass strategy to Retriever
-            old_k, old_depth = settings.k_seeds, settings.traversal_depth
-            settings.k_seeds = strategy.k_seeds
-            settings.traversal_depth = strategy.traversal_depth
-        else:
-            strategy = None
+            strategy_params = {
+                "k_seeds": strategy.k_seeds,
+                "traversal_depth": strategy.traversal_depth,
+                "min_edge_weight": strategy.min_edge_weight
+            }
 
         # 2. Perform Retrieval
-        result = super().retrieve(query, user_id)
+        result = super().retrieve(query, user_id, **strategy_params)
 
-        # 3. Log Event & Restore Settings
+        # 3. Log Event
         if settings.enable_adaptive_memory and strategy:
             event = RetrievalEvent(
                 user_id=user_id,
                 query=query,
                 strategy_id=strategy.id,
-                nodes_found=len(result.get("nodes", [])),
+                nodes_found=len(result.get("direct_beliefs", []))
+                + len(result.get("related_context", [])),
                 score=score_feedback or 0.0
             )
             self.store.log_retrieval_event(event)
             
-            # Include event_id in result for delayed feedback
             result["event_id"] = str(event.id)
             
-            # Update strategy fitness if feedback provided immediately
             if score_feedback is not None:
                 self.registry.update_fitness(strategy.id, score_feedback)
-
-            # Restore original settings
-            settings.k_seeds, settings.traversal_depth = old_k, old_depth
 
         return result
 
@@ -91,13 +87,9 @@ class AdaptiveMemory(Memory):
         Submits delayed feedback for a specific retrieval event.
         This is the core of the human-in-the-loop learning.
         """
-        # 1. Update the event record (Implicitly implemented in store by most implementations)
-        # For simplicity, we find the event and update its strategy fitness
-        # In a full DB implementation, we would update the retrieval_events table first.
-        
-        # 2. Extract strategy from event and update fitness
-        # We look up the event to find which strategy was used
-        events = self.store.get_retrieval_events(None, limit=1000) # Simple lookup for now
+        # 1. Find the event across all users (global lookup)
+        # We pass None as user_id to get events from all users.
+        events = self.store.get_retrieval_events(None, limit=1000)
         event = next((e for e in events if str(e.id) == event_id), None)
         
         if event:

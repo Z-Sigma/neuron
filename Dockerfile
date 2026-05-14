@@ -17,8 +17,8 @@ COPY . .
 
 # Set environment variables
 ENV PYTHONPATH=/app
-ENV DATABASE_URL=postgresql://postgres:postgres@db:5432/chasm
+ENV DATABASE_URL=postgresql://postgres:postgres@db:5432/neuron
 
 EXPOSE 8000
 
-CMD ["uvicorn", "chasm.api.server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "neuron.api.server:app", "--host", "0.0.0.0", "--port", "8000"]

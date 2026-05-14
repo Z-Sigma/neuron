@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from neuron.memory import Memory
 
 class NEURONSharedMemory:

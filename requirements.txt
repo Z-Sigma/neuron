@@ -11,3 +11,6 @@ numpy
 langchain
 python-dotenv
 sentence-transformers
+neo4j
+celery
+redis
