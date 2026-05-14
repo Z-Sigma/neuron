@@ -236,6 +236,7 @@ Import from **`neuron`**:
 | `retrieve(query, user_id)` | `dict` | Hybrid retrieval; see shape above. |
 | `add_manual(text, user_id, confidence=0.8)` | `Node` | Skip surprise filter. |
 | `process_batch_fast(texts, user_id, ...)` | `dict` | `nodes_added`, `edges_added`, `duplicates_dropped`. |
+| `process_batch(texts, user_id)` | `dict` | Alias of `process_batch_fast`. |
 | `process_batch_deep(texts, user_id, window_size=None, ...)` | `dict` | Same stats keys as fast batch. |
 | `maintenance(user_id, stale_days=30, min_confidence=0.35, consolidate=True)` | `dict` | Prune stale low-confidence nodes; optional entity-cluster consolidation via LLM. |
 
@@ -249,6 +250,8 @@ Import from **`neuron`**:
 | `strategy_report(user_id=None)` | `list[dict]` | `model_dump()` of each `RetrievalStrategy` (filtered by user if provided). |
 | `graph_health(user_id)` | `dict` | `total_nodes`, ratios, `status` in `healthy` / `noisy` / `empty`. |
 | `search_archive(query, user_id)` | `list` | Vector search **deprecated** nodes only. |
+| `set_user_preferences(user_id, prefs)` | `None` | Set maintenance controls (e.g. `{"pruning": false}`). |
+| `get_user_preferences(user_id)` | `dict` | Returns active preferences for the user. |
 | `process_batch(texts, user_id)` | `dict` | Alias of `process_batch_fast`. |
 
 `graph_health` and `strategy_report` exist only on **`AdaptiveMemory`**, not on base `Memory`.
@@ -274,7 +277,7 @@ Import from **`neuron`**:
 
 ## GraphStore interface (advanced / custom backends)
 
-Implement `neuron.graph.store_interface.GraphStore` — abstract methods include `setup`, `add_node`, `add_nodes_batch`, `search_nearest_nodes`, `search_deprecated_nodes`, edge CRUD, `list_nodes`, `get_nodes_by_entity`, adaptive hooks (`log_activity`, `log_retrieval_event`, strategies, `get_retrieval_events`, `get_users_needing_maintenance`), plus **`get_stale_nodes`**, and for coherence **`get_contradiction_pairs`**, **`get_nodes_for_strengthening`**. Neo4j adds **`traverse_graph`**.
+Implement `neuron.graph.store_interface.GraphStore` — abstract methods include `setup`, `add_node`, `add_nodes_batch`, `search_nearest_nodes`, `search_deprecated_nodes`, edge CRUD, `list_nodes`, `get_nodes_by_entity`, adaptive hooks (`log_activity`, `log_retrieval_event`, strategies, `get_retrieval_events`, `get_retrieval_event`, `get_users_needing_maintenance`), plus **`get_stale_nodes`**, and for coherence **`get_contradiction_pairs`**, **`get_nodes_for_strengthening`**. Neo4j and Postgres implement **`traverse_graph`**.
 
 ---
 

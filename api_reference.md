@@ -83,6 +83,15 @@ print(f"Added {results['nodes_added']} nodes.")
 
 ---
 
+### `process_batch`
+Alias for `process_batch_fast`. Ensures API consistency for users moving between standard and adaptive memory.
+
+**Parameters:**
+*   `texts` (List[str]): List of raw chunks.
+*   `user_id` (str): Owner ID.
+
+---
+
 ### `maintenance`
 Optimizes the graph by pruning stale data and consolidating entities.
 
@@ -157,6 +166,27 @@ Manually triggers the consolidation and strategy evolution pass.
 ```python
 adaptive.force_sleep("user_123")
 ```
+
+---
+
+### `set_user_preferences`
+Configures maintenance and retrieval behaviors for a specific user.
+
+**Parameters:**
+*   `user_id` (str): Unique user ID.
+*   `prefs` (Dict): Configuration dictionary (e.g., `{"pruning": False, "consolidation": True}`).
+
+**Example:**
+```python
+adaptive.set_user_preferences("user_123", {"pruning": False})
+```
+
+---
+
+### `get_user_preferences`
+Retrieves the current active configuration for a user.
+
+**Returns:** `Dict` of settings.
 
 ---
 
