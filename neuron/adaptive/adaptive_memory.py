@@ -17,6 +17,7 @@ class AdaptiveMemory(Memory):
         super().__init__(*args, **kwargs)
         self.registry = StrategyRegistry(self.store)
         self.consolidator = SleepConsolidator(self.store, self.registry)
+        self.user_prefs: Dict[str, Dict] = {} # In-memory cache for demo
         
         # Phase 3: Start background scheduler if auto-mode
         if settings.enable_adaptive_memory and settings.adaptive_mode == "auto":
@@ -87,10 +88,9 @@ class AdaptiveMemory(Memory):
         Submits delayed feedback for a specific retrieval event.
         This is the core of the human-in-the-loop learning.
         """
-        # 1. Find the event across all users (global lookup)
-        # We pass None as user_id to get events from all users.
-        events = self.store.get_retrieval_events(None, limit=1000)
-        event = next((e for e in events if str(e.id) == event_id), None)
+        # 1. Direct Lookup by ID (Optimized)
+        from uuid import UUID
+        event = self.store.get_retrieval_event(UUID(event_id))
         
         if event:
             self.registry.update_fitness(event.strategy_id, score, event.user_id)
@@ -98,8 +98,28 @@ class AdaptiveMemory(Memory):
         else:
             logger.warning(f"Could not find event {event_id} for feedback submission.")
 
+    def set_user_preferences(self, user_id: str, prefs: Dict):
+        """Sets maintenance and retrieval preferences for a user."""
+        if user_id not in self.user_prefs:
+            self.user_prefs[user_id] = {}
+        self.user_prefs[user_id].update(prefs)
+        logger.info(f"Updated preferences for user {user_id}: {self.user_prefs[user_id]}")
+
+    def get_user_preferences(self, user_id: str) -> Dict:
+        """Returns the user's current preferences, with defaults."""
+        return self.user_prefs.get(user_id, {
+            "pruning": True,
+            "consolidation": True,
+            "min_confidence": settings.min_confidence
+        })
+
     def force_sleep(self, user_id: str):
-        """Manually trigger a consolidation cycle."""
+        """Manually trigger a consolidation cycle, respecting user preferences."""
+        prefs = self.get_user_preferences(user_id)
+        if not prefs.get("pruning") and not prefs.get("consolidation"):
+            logger.info(f"Maintenance skipped for {user_id} based on preferences.")
+            return
+            
         self.consolidator.perform_sleep_cycle(user_id)
 
     def strategy_report(self, user_id: Optional[str] = None) -> List[Dict]:

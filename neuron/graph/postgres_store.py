@@ -5,6 +5,7 @@ from typing import List, Optional, Dict
 from uuid import UUID
 import json
 import logging
+from datetime import datetime, timezone
 from neuron.models import Node, Edge, ActivityLog, RetrievalEvent, RetrievalStrategy
 from neuron.graph.store_interface import GraphStore
 from neuron.config import settings
@@ -363,9 +364,64 @@ class PostgresGraphStore(GraphStore):
         finally:
             self.pool.putconn(conn)
 
+    def get_retrieval_event(self, event_id: UUID) -> Optional[RetrievalEvent]:
+        conn = self.pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id, user_id, query, strategy_id, nodes_found, score, created_at FROM retrieval_events WHERE id = %s", (str(event_id),))
+                r = cur.fetchone()
+                return RetrievalEvent(id=r[0], user_id=r[1], query=r[2], strategy_id=r[3], nodes_found=r[4], score=r[5], created_at=r[6]) if r else None
+        finally:
+            self.pool.putconn(conn)
+
     def get_contradiction_pairs(self, user_id: str) -> List[tuple]:
-        # Placeholder for daemon-specific query
-        return []
+        conn = self.pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT n1.*, n2.*, e.id
+                    FROM edges e
+                    JOIN nodes n1 ON e.from_node_id = n1.id
+                    JOIN nodes n2 ON e.to_node_id = n2.id
+                    WHERE n1.user_id = %s AND e.relation = 'contradicts'
+                    AND n1.deprecated = FALSE AND n2.deprecated = FALSE
+                """, (user_id,))
+                rows = cur.fetchall()
+                results = []
+                for r in rows:
+                    # n1 is columns 0-14, n2 is 15-29, e.id is 30
+                    node_a = self._row_to_node(r[0:15])
+                    node_b = self._row_to_node(r[15:30])
+                    results.append((node_a, node_b, UUID(r[30])))
+                return results
+        finally:
+            self.pool.putconn(conn)
+
+    def traverse_graph(self, start_node_ids: List[UUID], depth: int, user_id: str) -> List[Node]:
+        if not start_node_ids: return []
+        conn = self.pool.getconn()
+        try:
+            with conn.cursor() as cur:
+                # Use Recursive CTE for graph traversal
+                cur.execute("""
+                    WITH RECURSIVE graph_walk AS (
+                        SELECT to_node_id, 1 as current_depth
+                        FROM edges
+                        WHERE from_node_id IN %s
+                        UNION ALL
+                        SELECT e.to_node_id, gw.current_depth + 1
+                        FROM edges e
+                        JOIN graph_walk gw ON e.from_node_id = gw.to_node_id
+                        WHERE gw.current_depth < %s
+                    )
+                    SELECT DISTINCT n.* FROM nodes n
+                    JOIN graph_walk gw ON n.id = gw.to_node_id
+                    WHERE n.user_id = %s AND n.deprecated = FALSE
+                    LIMIT 50
+                """, (tuple(str(nid) for nid in start_node_ids), depth, user_id))
+                return [self._row_to_node(row) for row in cur.fetchall()]
+        finally:
+            self.pool.putconn(conn)
 
     def get_nodes_for_strengthening(self, user_id: str, min_evidence: int = 5) -> List[Node]:
         conn = self.pool.getconn()
@@ -379,8 +435,10 @@ class PostgresGraphStore(GraphStore):
     def _row_to_node(self, row) -> Node:
         return Node(
             id=UUID(row[0]), user_id=row[1], label=row[2], confidence=row[3],
-            evidence_count=row[4], contradiction_count=row[5], created_at=row[6],
-            last_confirmed_at=row[7], last_contradicted_at=row[8], domain_tags=row[9] or [],
+            evidence_count=row[4], contradiction_count=row[5], 
+            created_at=row[6] or datetime.now(timezone.utc),
+            last_confirmed_at=row[7] or datetime.now(timezone.utc), 
+            last_contradicted_at=row[8], domain_tags=row[9] or [],
             entities=row[10] or [], temporal_stability=row[11], abstraction_level=row[12],
             embedding=json.loads(row[13]) if isinstance(row[13], str) else row[13], deprecated=row[14]
         )
@@ -389,5 +447,6 @@ class PostgresGraphStore(GraphStore):
         return Edge(
             id=UUID(row[0]), from_node_id=UUID(row[1]), to_node_id=UUID(row[2]),
             relation=row[3], weight=row[4], evidence_count=row[5],
-            created_at=row[6], last_updated_at=row[7]
+            created_at=row[6] or datetime.now(timezone.utc),
+            last_updated_at=row[7] or datetime.now(timezone.utc)
         )

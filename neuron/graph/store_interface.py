@@ -100,6 +100,10 @@ class GraphStore(ABC):
         pass
 
     @abstractmethod
+    def get_retrieval_event(self, event_id: UUID) -> Optional[RetrievalEvent]:
+        pass
+
+    @abstractmethod
     def get_stale_nodes(self, user_id: str, days: int = 30, conf_threshold: float = 0.35) -> List[Node]:
         pass
 

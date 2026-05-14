@@ -1,6 +1,6 @@
 from typing import List, Optional, Dict
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from neo4j import GraphDatabase
 from neuron.models import Node, Edge, ActivityLog, RetrievalEvent, RetrievalStrategy
@@ -75,10 +75,14 @@ class Neo4jGraphStore(GraphStore):
             created_at: datetime(node_data.created_at)
         })
         """
-        data = [n.dict() for n in nodes]
+        data = [n.model_dump() for n in nodes]
         for d in data:
             d['id'] = str(d['id'])
-            d['created_at'] = d['created_at'].isoformat()
+            if d.get('created_at'):
+                if hasattr(d['created_at'], 'isoformat'):
+                    d['created_at'] = d['created_at'].isoformat()
+            else:
+                d['created_at'] = datetime.now(timezone.utc).isoformat()
         with self.driver.session() as session:
             session.run(query, nodes=data)
 
@@ -109,19 +113,23 @@ class Neo4jGraphStore(GraphStore):
         UNWIND $edges as edge_data
         MATCH (a:Belief {id: edge_data.from_node_id})
         MATCH (b:Belief {id: edge_data.to_node_id})
-        CREATE (a)-[r:RELATED {
+        CREATE (a)-[r:ASSOCIATION {
             id: edge_data.id,
             relation: edge_data.relation,
             weight: edge_data.weight,
             created_at: datetime(edge_data.created_at)
         }]->(b)
         """
-        data = [e.dict() for e in edges]
+        data = [e.model_dump() for e in edges]
         for d in data:
             d['id'] = str(d['id'])
             d['from_node_id'] = str(d['from_node_id'])
             d['to_node_id'] = str(d['to_node_id'])
-            d['created_at'] = d['created_at'].isoformat()
+            if d.get('created_at'):
+                if hasattr(d['created_at'], 'isoformat'):
+                    d['created_at'] = d['created_at'].isoformat()
+            else:
+                d['created_at'] = datetime.now(timezone.utc).isoformat()
         with self.driver.session() as session:
             session.run(query, edges=data)
 
@@ -165,11 +173,11 @@ class Neo4jGraphStore(GraphStore):
             session.run("""
                 MATCH (s:RetrievalStrategy {id: $strategy_id})
                 CREATE (e:RetrievalEvent {
-                    id: $id, user_id: $user_id, query: $query,
+                    id: $id, user_id: $user_id, query: $p_query,
                     nodes_found: $nodes_found, score: $score,
                     created_at: datetime($created_at)
                 })-[:USED_STRATEGY]->(s)
-            """, id=str(event.id), user_id=event.user_id, query=event.query,
+            """, id=str(event.id), user_id=event.user_id, p_query=event.query,
                  strategy_id=event.strategy_id, nodes_found=event.nodes_found,
                  score=event.score, created_at=event.created_at.isoformat())
 
@@ -216,21 +224,49 @@ class Neo4jGraphStore(GraphStore):
             """, window=window_hours)
             return [record['user_id'] for record in result]
 
-    def get_retrieval_events(self, user_id: str, limit: int = 100) -> List[RetrievalEvent]:
+    def get_retrieval_events(self, user_id: Optional[str], limit: int = 100) -> List[RetrievalEvent]:
         with self.driver.session() as session:
-            result = session.run("""
-                MATCH (e:RetrievalEvent {user_id: $user_id})-[r:USED_STRATEGY]->(s:RetrievalStrategy)
-                RETURN e, s.id AS strategy_id
-                ORDER BY e.created_at DESC LIMIT $limit
-            """, user_id=user_id, limit=limit)
+            if user_id:
+                result = session.run("""
+                    MATCH (e:RetrievalEvent {user_id: $user_id})-[r:USED_STRATEGY]->(s:RetrievalStrategy)
+                    RETURN e, s.id AS strategy_id
+                    ORDER BY e.created_at DESC LIMIT $limit
+                """, user_id=user_id, limit=limit)
+            else:
+                result = session.run("""
+                    MATCH (e:RetrievalEvent)-[r:USED_STRATEGY]->(s:RetrievalStrategy)
+                    RETURN e, s.id AS strategy_id
+                    ORDER BY e.created_at DESC LIMIT $limit
+                """, limit=limit)
             events = []
             for record in result:
                 d = dict(record['e'])
                 d['strategy_id'] = record['strategy_id']
                 d['id'] = UUID(d['id'])
-                # Convert neo4j datetime back if needed, but Pydantic handles isoformat
+                if hasattr(d.get('created_at'), 'to_native'):
+                    d['created_at'] = d['created_at'].to_native()
+                if d.get('created_at') is None:
+                    d['created_at'] = datetime.now(timezone.utc)
                 events.append(RetrievalEvent(**d))
             return events
+
+    def get_retrieval_event(self, event_id: UUID) -> Optional[RetrievalEvent]:
+        with self.driver.session() as session:
+            result = session.run("""
+                MATCH (e:RetrievalEvent {id: $event_id})-[r:USED_STRATEGY]->(s:RetrievalStrategy)
+                RETURN e, s.id AS strategy_id
+            """, event_id=str(event_id))
+            record = result.single()
+            if record:
+                d = dict(record['e'])
+                d['strategy_id'] = record['strategy_id']
+                d['id'] = UUID(d['id'])
+                if hasattr(d.get('created_at'), 'to_native'):
+                    d['created_at'] = d['created_at'].to_native()
+                if d.get('created_at') is None:
+                    d['created_at'] = datetime.now(timezone.utc)
+                return RetrievalEvent(**d)
+            return None
 
     def traverse_graph(self, start_node_ids: List[UUID], depth: int, user_id: str) -> List[Node]:
         """Performs a multi-hop graph walk in a SINGLE database round-trip."""
@@ -238,7 +274,7 @@ class Neo4jGraphStore(GraphStore):
         query = f"""
         MATCH (start:Belief)
         WHERE start.id IN $start_ids AND start.user_id = $user_id
-        MATCH (start)-[r:RELATED*1..{depth}]->(neighbor:Belief)
+        MATCH (start)-[r:ASSOCIATION*1..{depth}]->(neighbor:Belief)
         WHERE neighbor.user_id = $user_id AND neighbor.deprecated = false
         RETURN DISTINCT neighbor
         LIMIT 50
@@ -280,7 +316,7 @@ class Neo4jGraphStore(GraphStore):
                 abstraction_level: $abstraction_level,
                 domain_tags: $domain_tags, entities: $entities,
                 deprecated: $deprecated, embedding: $embedding,
-                created_at: $created_at, last_confirmed_at: $last_confirmed_at
+                created_at: datetime($created_at), last_confirmed_at: datetime($last_confirmed_at)
             })
         """, id=str(node.id), user_id=node.user_id, label=node.label,
             confidence=node.confidence, evidence_count=node.evidence_count,
@@ -289,7 +325,7 @@ class Neo4jGraphStore(GraphStore):
             abstraction_level=node.abstraction_level,
             domain_tags=node.domain_tags, entities=node.entities,
             deprecated=node.deprecated, embedding=node.embedding,
-            created_at=str(node.created_at), last_confirmed_at=str(node.last_confirmed_at))
+            created_at=node.created_at.isoformat(), last_confirmed_at=node.last_confirmed_at.isoformat())
 
     @staticmethod
     def _find_node(tx, node_id: str):
@@ -321,12 +357,12 @@ class Neo4jGraphStore(GraphStore):
             CREATE (a)-[r:ASSOCIATION {
                 id: $id, relation: $relation, weight: $weight,
                 evidence_count: $evidence_count, 
-                created_at: $created_at, last_updated_at: $last_updated_at
+                created_at: datetime($created_at), last_updated_at: datetime($last_updated_at)
             }]->(b)
         """, from_id=str(edge.from_node_id), to_id=str(edge.to_node_id),
             id=str(edge.id), relation=edge.relation, weight=edge.weight,
             evidence_count=edge.evidence_count,
-            created_at=str(edge.created_at), last_updated_at=str(edge.last_updated_at))
+            created_at=edge.created_at.isoformat(), last_updated_at=edge.last_updated_at.isoformat())
 
     @staticmethod
     def _find_edges(tx, node_id: str):
@@ -338,6 +374,13 @@ class Neo4jGraphStore(GraphStore):
         edges = []
         for record in result:
             r = dict(record['r'])
+            # DateTime conversion and null handling
+            for field in ['created_at', 'last_updated_at']:
+                if hasattr(r.get(field), 'to_native'):
+                    r[field] = r[field].to_native()
+                if r.get(field) is None:
+                    r[field] = datetime.now(timezone.utc)
+
             edges.append(Edge(
                 id=UUID(r['id']),
                 from_node_id=UUID(record['from_id']),
@@ -345,6 +388,8 @@ class Neo4jGraphStore(GraphStore):
                 relation=r.get('relation', 'refines'),
                 weight=r.get('weight', 0.5),
                 evidence_count=r.get('evidence_count', 1),
+                created_at=r['created_at'],
+                last_updated_at=r['last_updated_at']
             ))
         return edges
 
@@ -359,6 +404,13 @@ class Neo4jGraphStore(GraphStore):
         edges_map = {UUID(nid): [] for nid in node_ids}
         for record in result:
             r = dict(record['r'])
+            # DateTime conversion and null handling
+            for field in ['created_at', 'last_updated_at']:
+                if hasattr(r.get(field), 'to_native'):
+                    r[field] = r[field].to_native()
+                if r.get(field) is None:
+                    r[field] = datetime.now(timezone.utc)
+
             edge = Edge(
                 id=UUID(r['id']),
                 from_node_id=UUID(record['from_id']),
@@ -366,6 +418,8 @@ class Neo4jGraphStore(GraphStore):
                 relation=r.get('relation', 'refines'),
                 weight=r.get('weight', 0.5),
                 evidence_count=r.get('evidence_count', 1),
+                created_at=r['created_at'],
+                last_updated_at=r['last_updated_at']
             )
             # Add to the correct bucket(s)
             from_id = UUID(record['from_id'])
@@ -385,13 +439,13 @@ class Neo4jGraphStore(GraphStore):
                 n.domain_tags = $domain_tags, n.entities = $entities,
                 n.temporal_stability = $temporal_stability,
                 n.abstraction_level = $abstraction_level,
-                n.last_confirmed_at = $last_confirmed_at
+                n.last_confirmed_at = datetime($last_confirmed_at)
         """, id=str(node.id), label=node.label, confidence=node.confidence,
             evidence_count=node.evidence_count, deprecated=node.deprecated,
             domain_tags=node.domain_tags, entities=node.entities,
             temporal_stability=node.temporal_stability,
             abstraction_level=node.abstraction_level,
-            last_confirmed_at=str(node.last_confirmed_at))
+            last_confirmed_at=node.last_confirmed_at.isoformat())
 
     @staticmethod
     def _update_edge_tx(tx, edge: Edge):
@@ -488,4 +542,6 @@ class Neo4jGraphStore(GraphStore):
             abstraction_level=d.get('abstraction_level', 'specific'),
             embedding=d.get('embedding'),
             deprecated=d.get('deprecated', False),
+            created_at=d['created_at'].to_native() if hasattr(d.get('created_at'), 'to_native') else (d.get('created_at') or datetime.now(timezone.utc)),
+            last_confirmed_at=d['last_confirmed_at'].to_native() if hasattr(d.get('last_confirmed_at'), 'to_native') else (d.get('last_confirmed_at') or datetime.now(timezone.utc))
         )

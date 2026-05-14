@@ -1,6 +1,6 @@
 <div align="center">
   <img src="logo.png" alt="Neuron Logo" width="200"/>
-  <h1>🧠 neuron | Cognitive Memory Layer</h1>
+  <h1>🧠 neuron | Cognitive Memory Layer for AI Agents</h1>
 </div>
 
 [![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org/)

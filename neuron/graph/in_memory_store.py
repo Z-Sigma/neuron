@@ -101,13 +101,34 @@ class InMemoryGraphStore(GraphStore):
         
     # Maintenance stubs for in-memory
     def get_stale_nodes(self, user_id: str, days: int = 30, conf_threshold: float = 0.35) -> List[Node]:
-        return []
+        from datetime import datetime, timezone, timedelta
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        return [
+            n for n in self.nodes.values()
+            if n.user_id == user_id
+            and n.last_confirmed_at < cutoff
+            and n.confidence < conf_threshold
+            and not n.deprecated
+        ]
         
     def get_contradiction_pairs(self, user_id: str) -> List[tuple]:
-        return []
+        results = []
+        for edge in self.edges:
+            if edge.relation == "contradicts":
+                node_a = self.nodes.get(edge.from_node_id)
+                node_b = self.nodes.get(edge.to_node_id)
+                if node_a and node_b and node_a.user_id == user_id:
+                    results.append((node_a, node_b, edge.id))
+        return results
         
     def get_nodes_for_strengthening(self, user_id: str, min_evidence: int = 5) -> List[Node]:
-        return []
+        return [
+            n for n in self.nodes.values()
+            if n.user_id == user_id
+            and n.evidence_count >= min_evidence
+            and n.confidence < 0.95
+            and not n.deprecated
+        ]
 
     def list_nodes(self, user_id: str, limit: int = 100) -> List[Node]:
         user_nodes = [n for n in self.nodes.values() if n.user_id == user_id]
@@ -168,3 +189,9 @@ class InMemoryGraphStore(GraphStore):
         else:
             user_events = self.retrieval_events
         return sorted(user_events, key=lambda x: x.created_at, reverse=True)[:limit]
+
+    def get_retrieval_event(self, event_id: UUID) -> Optional[RetrievalEvent]:
+        for e in self.retrieval_events:
+            if e.id == event_id:
+                return e
+        return None

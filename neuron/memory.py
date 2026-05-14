@@ -245,6 +245,13 @@ class Memory:
         self.store.add_node(new_node)
         return new_node
 
+    def process_batch(self, texts: List[str], user_id: str) -> Dict:
+        """
+        Standard batch processing alias.
+        Defaults to process_batch_fast for high-speed ingestion.
+        """
+        return self.process_batch_fast(texts, user_id)
+
     def process_batch_fast(
         self, 
         texts: List[str], 
