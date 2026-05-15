@@ -35,9 +35,9 @@ class AdaptiveMemory(Memory):
             ))
         return node
 
-    def process_batch(self, texts: list, user_id: str):
+    def process_batch(self, texts: list, user_id: str, global_deduplication: bool = False):
         """Alias for process_batch_fast — high-speed ingestion."""
-        return self.process_batch_fast(texts, user_id)
+        return self.process_batch_fast(texts, user_id, global_deduplication=global_deduplication)
 
     def search_archive(self, query: str, user_id: str) -> list:
         """

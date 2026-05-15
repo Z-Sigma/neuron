@@ -73,12 +73,13 @@ High-speed bulk ingestion bypassing the LLM.
 *   `texts` (List[str]): List of raw chunks.
 *   `user_id` (str): Owner ID.
 *   `deduplication_threshold` (float): Cosine similarity at which to drop duplicates (default 0.95).
-*   `knn_edges` (int): Number of semantic edges to create per node.
+*   `knn_edges` (int): Number of semantic edges to create per node (default 3).
+*   `global_deduplication` (bool): If True, performs cross-batch deduplication against the store, incrementing evidence for existing nodes instead of adding new ones (default False).
 
 **Example:**
 ```python
-results = memory.process_batch_fast(corpus_chunks, user_id="corp_user")
-print(f"Added {results['nodes_added']} nodes.")
+results = memory.process_batch_fast(corpus_chunks, user_id="corp_user", global_deduplication=True)
+print(f"Added {results['nodes_added']} nodes, dropped {results['duplicates_dropped']} duplicates.")
 ```
 
 ---
@@ -89,6 +90,20 @@ Alias for `process_batch_fast`. Ensures API consistency for users moving between
 **Parameters:**
 *   `texts` (List[str]): List of raw chunks.
 *   `user_id` (str): Owner ID.
+*   `global_deduplication` (bool): Whether to enable cross-batch deduplication (default False).
+
+---
+
+### `process_batch_deep`
+Semantically rich bulk ingestion using windowed LLM abstraction.
+
+**Parameters:**
+*   `texts` (List[str]): List of raw chunks.
+*   `user_id` (str): Owner ID.
+*   `window_size` (int): Number of chunks per LLM call (defaults to settings).
+*   `deduplication_threshold` (float): Cosine similarity at which to drop duplicates (default 0.95).
+*   `knn_edges` (int): Number of semantic edges per node (default 3).
+*   `global_deduplication` (bool): If True, performs cross-batch deduplication + entity merging against the store (default False).
 
 ---
 

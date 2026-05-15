@@ -192,11 +192,11 @@ Neo4j provides **`traverse_graph`** for faster multi-hop reads; Postgres uses la
 | Mode | Method | LLM | Typical use |
 | --- | --- | --- | --- |
 | **Interactive / chat** | `Memory.process(text, user_id)` | Yes (`extract`) | Single utterances; surprise filter + entity/similarity linking. |
-| **Fast bulk** | `Memory.process_batch_fast(texts, user_id, deduplication_threshold=0.95, knn_edges=3)` | No | Large corpora: embed all, dedupe by cosine matrix, kNN edges, bulk write. |
-| **Deep bulk** | `Memory.process_batch_deep(texts, user_id, window_size=None, ...)` | Yes (`batch_extract` per window) | Semantically rich corpora after dedupe; entity hub linking across batch + existing graph. |
+| **Fast bulk** | `Memory.process_batch_fast(texts, user_id, deduplication_threshold=0.95, knn_edges=3, global_deduplication=False)` | No | Large corpora: embed all, dedupe by cosine matrix, kNN edges, bulk write. Supports global cross-batch deduplication. |
+| **Deep bulk** | `Memory.process_batch_deep(texts, user_id, window_size=None, ..., global_deduplication=False)` | Yes (`batch_extract` per window) | Semantically rich corpora after dedupe; entity hub linking across batch + existing graph. Supports global cross-batch deduplication + entity merge. |
 | **Manual seed** | `Memory.add_manual(text, user_id, confidence=0.8)` | Yes | Bypass surprise filter; still abstracts and stores. |
 
-`AdaptiveMemory.process_batch(...)` is an **alias** for `process_batch_fast`.
+`AdaptiveMemory.process_batch(...)` is an **alias** for `process_batch_fast`. Supports `global_deduplication`.
 
 ---
 
@@ -235,9 +235,9 @@ Import from **`neuron`**:
 | `process(text, user_id)` | `Optional[Node]` | Surprise → maybe confirm/boost → else abstract, add node, add edges. |
 | `retrieve(query, user_id)` | `dict` | Hybrid retrieval; see shape above. |
 | `add_manual(text, user_id, confidence=0.8)` | `Node` | Skip surprise filter. |
-| `process_batch_fast(texts, user_id, ...)` | `dict` | `nodes_added`, `edges_added`, `duplicates_dropped`. |
-| `process_batch(texts, user_id)` | `dict` | Alias of `process_batch_fast`. |
-| `process_batch_deep(texts, user_id, window_size=None, ...)` | `dict` | Same stats keys as fast batch. |
+| `process_batch_fast(texts, user_id, ...)` | `dict` | `nodes_added`, `edges_added`, `duplicates_dropped`. Supports `global_deduplication`. |
+| `process_batch(texts, user_id, global_deduplication=False)` | `dict` | Alias of `process_batch_fast`. |
+| `process_batch_deep(texts, user_id, window_size=None, ..., global_deduplication=False)` | `dict` | Same stats keys as fast batch. |
 | `maintenance(user_id, stale_days=30, min_confidence=0.35, consolidate=True)` | `dict` | Prune stale low-confidence nodes; optional entity-cluster consolidation via LLM. |
 
 ### `AdaptiveMemory` additional methods
@@ -252,7 +252,7 @@ Import from **`neuron`**:
 | `search_archive(query, user_id)` | `list` | Vector search **deprecated** nodes only. |
 | `set_user_preferences(user_id, prefs)` | `None` | Set maintenance controls (e.g. `{"pruning": false}`). |
 | `get_user_preferences(user_id)` | `dict` | Returns active preferences for the user. |
-| `process_batch(texts, user_id)` | `dict` | Alias of `process_batch_fast`. |
+| `process_batch(texts, user_id, global_deduplication=False)` | `dict` | Alias of `process_batch_fast`. |
 
 `graph_health` and `strategy_report` exist only on **`AdaptiveMemory`**, not on base `Memory`.
 
@@ -295,7 +295,7 @@ python tests/scale_test.py
 
 ## Modifying behavior for your workload
 
-- **Cheaper ingest**: use `process_batch_fast` or increase `process_batch_deep` `deduplication_threshold` to drop more near-duplicates; increase `window_size` to fewer LLM calls (less precise NER risk).
+- **Cheaper ingest**: use `process_batch_fast` or increase `process_batch_deep` `deduplication_threshold` to drop more near-duplicates; enable `global_deduplication` to avoid cross-batch redundancy; increase `window_size` to fewer LLM calls (less precise NER risk).
 - **Narrower memory**: raise `BASE_NOVELTY_THRESHOLD` so only more novel text creates new nodes; widen confirmation band to merge more into existing beliefs.
 - **Richer retrieval context**: increase `K_SEEDS` and/or `TRAVERSAL_DEPTH` / `MAX_CONTEXT_NODES`; lower `MIN_EDGE_WEIGHT` to follow weaker edges (noisier).
 - **Stricter context**: lower depth and seeds; raise `MIN_EDGE_WEIGHT` and `MIN_CONFIDENCE`.

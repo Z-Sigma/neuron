@@ -245,19 +245,20 @@ class Memory:
         self.store.add_node(new_node)
         return new_node
 
-    def process_batch(self, texts: List[str], user_id: str) -> Dict:
+    def process_batch(self, texts: List[str], user_id: str, global_deduplication: bool = False) -> Dict:
         """
         Standard batch processing alias.
         Defaults to process_batch_fast for high-speed ingestion.
         """
-        return self.process_batch_fast(texts, user_id)
+        return self.process_batch_fast(texts, user_id, global_deduplication=global_deduplication)
 
     def process_batch_fast(
         self, 
         texts: List[str], 
         user_id: str, 
         deduplication_threshold: float = 0.95,
-        knn_edges: int = 3
+        knn_edges: int = 3,
+        global_deduplication: bool = False
     ) -> Dict:
         """
         Fast Batch Processing (Option 2.5).
@@ -311,6 +312,25 @@ class Memory:
                 confidence=1.0, # Default high confidence for raw ingestion
                 embedding=embeddings[idx]
             )
+            
+            if global_deduplication:
+                # Cross-Batch Deduplication: Check against store
+                matches = self.store.search_nearest_nodes(node.embedding, user_id, k=1)
+                if matches:
+                    best_match = matches[0]
+                    # Compute similarity manually (embeddings are normalized)
+                    sim = float(np.dot(node.embedding, best_match.embedding))
+                    if sim >= deduplication_threshold:
+                        # EVIDENCE INCREMENT: Instead of adding, strengthen existing node
+                        best_match.evidence_count += 1
+                        best_match.last_confirmed_at = datetime.now(timezone.utc)
+                        best_match.confidence = min(best_match.confidence + 0.05, 0.95)
+                        self.store.update_node(best_match)
+                        
+                        node_mapping[idx] = best_match
+                        dropped_count += 1
+                        continue
+            
             unique_nodes.append(node)
             node_mapping[idx] = node
             
@@ -359,7 +379,8 @@ class Memory:
         user_id: str, 
         window_size: Optional[int] = None,
         deduplication_threshold: float = 0.95,
-        knn_edges: int = 3
+        knn_edges: int = 3,
+        global_deduplication: bool = False
     ) -> Dict:
         """
         Deep Batch Processing (Variant 2.75).
@@ -415,9 +436,11 @@ class Memory:
             abstractions = self.engine.batch_extract(window)
             all_abstractions.extend(abstractions)
             
-        # 3. Create Nodes
+        # 3. Create Nodes (and check for Global Duplicates)
         new_nodes = []
-        for idx, abstraction in enumerate(all_abstractions):
+        node_lookup = {} # i -> Node (either new or global existing)
+        
+        for i, abstraction in enumerate(all_abstractions):
             node = Node(
                 user_id=user_id,
                 label=abstraction.label,
@@ -426,17 +449,42 @@ class Memory:
                 entities=abstraction.entities,
                 temporal_stability=abstraction.temporal_stability,
                 abstraction_level=abstraction.abstraction_level,
-                embedding=unique_embeddings[idx]
+                embedding=unique_embeddings[i]
             )
+            
+            if global_deduplication:
+                matches = self.store.search_nearest_nodes(node.embedding, user_id, k=1)
+                if matches:
+                    best_match = matches[0]
+                    sim = float(np.dot(node.embedding, best_match.embedding))
+                    if sim >= deduplication_threshold:
+                        # EVIDENCE INCREMENT + ENTITY MERGE
+                        best_match.evidence_count += 1
+                        best_match.last_confirmed_at = datetime.now(timezone.utc)
+                        best_match.confidence = min(best_match.confidence + 0.05, 0.95)
+                        
+                        # Link any new entities discovered
+                        if node.entities:
+                            existing_entities = set(best_match.entities)
+                            for ent in node.entities:
+                                if ent not in existing_entities:
+                                    best_match.entities.append(ent)
+                        
+                        self.store.update_node(best_match)
+                        node_lookup[i] = best_match
+                        dropped_count += 1
+                        continue
+
             new_nodes.append(node)
+            node_lookup[i] = node
             
         # 4. Construct Associative Edges
         edges = []
         
         # A. K-NN Semantic Edges (within the batch)
-        if len(new_nodes) > 1:
+        if len(node_lookup) > 1:
             for i, idx_a in enumerate(keep_indices):
-                node_a = new_nodes[i]
+                node_a = node_lookup[i]
                 neighbors = []
                 for j, idx_b in enumerate(keep_indices):
                     if i != j:
@@ -444,17 +492,20 @@ class Memory:
                         neighbors.append((similarity, j))
                 neighbors.sort(key=lambda x: x[0], reverse=True)
                 for sim, j in neighbors[:knn_edges]:
-                    node_b = new_nodes[j]
-                    edges.append(Edge(
-                        from_node_id=node_a.id,
-                        to_node_id=node_b.id,
-                        relation="refines",
-                        weight=float(sim)
-                    ))
+                    node_b = node_lookup[j]
+                    # Avoid self-edges if we merged into the same global node
+                    if node_a.id != node_b.id:
+                        edges.append(Edge(
+                            from_node_id=node_a.id,
+                            to_node_id=node_b.id,
+                            relation="refines",
+                            weight=float(sim)
+                        ))
                     
         # B. Entity Hub Linking (Crossing sessions)
         entity_map = {}
-        for node in new_nodes:
+        for i in range(len(node_lookup)):
+            node = node_lookup[i]
             for ent in node.entities:
                 if ent not in entity_map: entity_map[ent] = []
                 entity_map[ent].append(node)

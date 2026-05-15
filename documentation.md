@@ -66,13 +66,16 @@ Labels are truncated to `settings.max_label_length` in validators.
 ### 3.2 `Memory.process_batch_fast`
 
 1. `embed_batch` → numpy cosine matrix; greedy dedupe by `deduplication_threshold`.
-2. Nodes use **raw chunk text** as `label` (truncated to 2000 chars in code), confidence `1.0`.
-3. For each kept row, top `knn_edges` neighbors by similarity → `Edge(relation="refines", weight=sim)`.
-4. `add_nodes_batch` / `add_edges_batch`.
+2. **Global Deduplication** (Optional): If `global_deduplication` is True, search store for nearest node. If `sim >= threshold`, increment `evidence_count` and update `confidence` of the existing node; use its ID for any batch edges.
+3. Nodes use **raw chunk text** as `label` (truncated to 2000 chars in code), confidence `1.0` (or updated confidence if merged).
+4. For each kept row, top `knn_edges` neighbors by similarity → `Edge(relation="refines", weight=sim)`.
+5. `add_nodes_batch` / `add_edges_batch`.
 
 ### 3.3 `Memory.process_batch_deep`
 
 Same dedupe as fast, then `AbstractionEngine.batch_extract` per `window_size` (default `settings.batch_window_size`).
+
+**Global Deduplication** (Optional): Similar to fast mode, but also performs **Entity Merging** — new entities discovered in the batch are appended to the existing global node's entities list.
 
 Nodes use abstraction metadata; embeddings from **pre-dedupe** vectors aligned to kept rows.
 
