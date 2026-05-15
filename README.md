@@ -15,25 +15,101 @@
 High-level data flow:
 
 ```mermaid
-flowchart LR
-  subgraph ingest["Ingest"]
-    T[Text / chunks]
-    SF[SurpriseFilter]
-    AE[AbstractionEngine]
-    E[Embedder]
-    GS[(GraphStore)]
-    T --> SF
-    SF --> AE
-    AE --> E
-    E --> GS
-  end
-  subgraph retrieve["Retrieve"]
-    Q[Query]
-    R[Retriever]
-    Q --> E
-    E --> R
-    R --> GS
-  end
+flowchart TD
+    %% 1. Ingestion Paths
+    subgraph Ingestion["1. Ingestion Pipelines"]
+        UI[User Input / Text Chunks]
+        
+        subgraph StandardMode["Standard Mode"]
+            SF[Surprise Filter]
+            SF -- "Matched (High Sim)" --> Confirm[Evidence Increment]
+            SF -- "Novel (Low Sim)" --> AE[Abstraction Engine]
+            AE -- Structured Metadata --> StoreNode[Create Node]
+        end
+        
+        subgraph BatchMode["Batch Modes (Fast/Deep)"]
+            BE[Batch Embedder]
+            IDD[Intra-Batch Dedupe]
+            GDD{Global Dedupe?}
+            EHL[Entity Hub Linking]
+            
+            BE --> IDD
+            IDD --> GDD
+            GDD -- "Deep Mode Only" --> EHL
+        end
+        
+        UI --> SF
+        UI --> BE
+    end
+
+    %% 2. Global Deduplication & Evidence
+    subgraph GlobalLogic["2. Global Logic & Evidence"]
+        GDD -- Yes --> Match[Search Store for Match]
+        Match -- "Found Match" --> EI[Evidence Increment + Entity Merge]
+        Match -- "Unique" --> AE2[LLM Metadata Extract]
+        GDD -- No --> StoreNode2[Create New Nodes]
+        
+        Confirm --> GS
+        EI -- Update --> GS
+        AE2 --> GS
+        StoreNode2 --> GS
+        EHL -- "Global Entity Search" --> GS
+    end
+
+    %% 3. Storage Layer
+    subgraph Storage["3. Storage Layer (GraphStore)"]
+        GS[(Knowledge Graph)]
+        NB[Nodes: Beliefs/Facts]
+        EB[Edges: Semantic Relations]
+        GS --> NB
+        GS --> EB
+    end
+
+    %% 4. Retrieval Path
+    subgraph Retrieval["4. Retrieval Pipeline"]
+        Query[User Query]
+        SR[Strategy Registry]
+        QE[Query Embedder]
+        DR{Deep Recall?}
+        GW[Graph Walk / Expansion]
+        MY[Myelination: Edge Weight Up]
+        CA[Context Assembly]
+        
+        Query --> SR
+        SR -- Pick Strategy --> QE
+        QE --> DR
+        DR -- Fails --> Archive[Search Deprecated Nodes]
+        DR -- Success --> GW
+        Archive -- Reactivate --> GW
+        GW -- Traversal --> GS
+        GW --> MY
+        MY -- Persist Weights --> GS
+        GW --> CA
+        CA --> Result[Final Context]
+    end
+
+    %% 5. Adaptive Learning Loop
+    subgraph Adaptive["5. Adaptive Learning Loop"]
+        Result --> Log[Log Retrieval Event]
+        Log --> FB[User Feedback / Score]
+        FB --> Registry[Update Strategy Fitness]
+        
+        subgraph SleepCycle["Sleep Cycle (Evolution & Coherence)"]
+            SC[Sleep Scheduler]
+            Cons[Sleep Consolidator]
+            Evol[Evolution Engine]
+            Maint[Memory Maintenance]
+            CD[Coherence Daemon]
+            
+            SC -- Trigger --> Cons
+            Cons -- Genetic Select --> Evol
+            Evol -- Mutate --> Registry
+            Cons --> Maint
+            Maint -- Prune / Merge Clusters --> GS
+            Cons --> CD
+            CD -- Resolve Conflicts --> GS
+        end
+    end
 ```
 
 | Layer | Role |
