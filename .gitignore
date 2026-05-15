@@ -69,3 +69,6 @@ dmypy.json
 # Excluded by User
 benchmarks/
 blueprint.js
+.gemini/
+test_out.txt
+*.log

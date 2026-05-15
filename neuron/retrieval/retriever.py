@@ -64,59 +64,32 @@ class Retriever:
                     seeds = [archived] + [s for s in seeds if s.id != archived.id]
         
         # 3. Graph Traversal (Context Discovery)
-        seen_node_ids: Set[UUID] = {n.id for n in seeds}
         all_nodes: List[Node] = list(seeds)
-        all_edges: List[Edge] = []
+        all_edges = []
+        seen_node_ids = {n.id for n in seeds}
         
-        # Optimization: Use native single-trip traversal if the store supports it (Fast on Cloud)
-        if hasattr(self.store, 'traverse_graph'):
-            related_nodes = self.store.traverse_graph(
-                start_node_ids=list(seen_node_ids),
-                depth=traversal_depth,
-                user_id=user_id
-            )
-            for node in related_nodes:
-                if node.id not in seen_node_ids:
-                    seen_node_ids.add(node.id)
-                    all_nodes.append(node)
-                    if len(all_nodes) >= max_context_nodes:
-                        break
-        else:
-            # Fallback to iterative layer-by-layer traversal (Slow on Cloud)
-            current_layer = list(seeds)
-            for hop in range(traversal_depth):
+        # Unified Traversal (Now mandatory for all stores)
+        related_nodes, discovered_edges = self.store.traverse_graph(
+            start_node_ids=list(seen_node_ids),
+            depth=traversal_depth,
+            user_id=user_id
+        )
+        
+        for node in related_nodes:
+            if node.id not in seen_node_ids:
+                seen_node_ids.add(node.id)
+                all_nodes.append(node)
                 if len(all_nodes) >= max_context_nodes:
                     break
-                    
-                layer_ids = [n.id for n in current_layer]
-                edges_map = self.store.get_edges_batch(layer_ids)
-                
-                next_layer_candidates = set()
-                for node_id, edges in edges_map.items():
-                    for edge in edges:
-                        if edge.weight < min_edge_weight:
-                            continue
-                        all_edges.append(edge)
-                        self._myelinate_edge(edge)
-                        target_id = edge.to_node_id if edge.from_node_id == node_id else edge.from_node_id
-                        if target_id not in seen_node_ids:
-                            next_layer_candidates.add(target_id)
-                
-                if not next_layer_candidates: break
-                
-                next_layer = self.store.get_nodes_batch(list(next_layer_candidates))
-                filtered_layer = []
-                for target_node in next_layer:
-                    if not target_node.deprecated:
-                        seen_node_ids.add(target_node.id)
-                        all_nodes.append(target_node)
-                        filtered_layer.append(target_node)
-                        if len(all_nodes) >= max_context_nodes: break
-                
-                if not filtered_layer: break
-                current_layer = filtered_layer
         
-        # 4. Finalize Myelination (Batch Update to Store)
+        # 3. Neural Path Strengthening (Myelination)
+        # We myelinate all discovered edges exactly once
+        for edge in discovered_edges:
+            if edge.weight >= min_edge_weight:
+                all_edges.append(edge)
+                self._myelinate_edge(edge)
+        
+        # Bulk save myelinated paths
         if all_edges:
             self.store.update_edges_batch(all_edges)
         
@@ -141,10 +114,10 @@ class Retriever:
         return {
             "direct_beliefs": direct_beliefs,
             "unresolved_tensions": unresolved_tensions,
-            "related_context": [
-                {"label": n.label, "confidence": n.confidence}
+            "related_context": sorted([
+                {"label": n.label, "confidence": n.confidence, "evidence": n.evidence_count}
                 for n in all_nodes if n.id not in {s.id for s in seeds}
-            ]
+            ], key=lambda x: (x['confidence'], x['evidence']), reverse=True)
         }
 
     def _myelinate_edge(self, edge: Edge):

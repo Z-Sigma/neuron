@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 from uuid import UUID
 from neuron.models import Node, Edge, ActivityLog, RetrievalEvent, RetrievalStrategy
 
@@ -7,6 +7,11 @@ class GraphStore(ABC):
     @abstractmethod
     def setup(self) -> None:
         """Initialize the database schema, indexes, and constraints."""
+        pass
+
+    @abstractmethod
+    def transaction(self):
+        """Context manager for atomicity."""
         pass
 
     @abstractmethod
@@ -48,17 +53,9 @@ class GraphStore(ABC):
     @abstractmethod
     def get_edges_batch(self, node_ids: List[UUID]) -> Dict[UUID, List[Edge]]:
         pass
-        
-    @abstractmethod
-    def update_node(self, node: Node) -> Node:
-        pass
 
     @abstractmethod
-    def list_nodes(self, user_id: str, limit: int = 100) -> List[Node]:
-        pass
-        
-    @abstractmethod
-    def get_nodes_by_entity(self, entity: str, user_id: str) -> List[Node]:
+    def update_node(self, node: Node) -> Node:
         pass
 
     @abstractmethod
@@ -69,8 +66,10 @@ class GraphStore(ABC):
     def update_edges_batch(self, edges: List[Edge]) -> List[Edge]:
         pass
 
-    # --- Adaptive Memory Extensions ---
-    
+    @abstractmethod
+    def delete_edge(self, edge_id: UUID) -> None:
+        pass
+
     @abstractmethod
     def log_activity(self, activity: ActivityLog) -> None:
         pass
@@ -92,6 +91,10 @@ class GraphStore(ABC):
         pass
 
     @abstractmethod
+    def delete_strategy(self, strategy_id: str) -> None:
+        pass
+
+    @abstractmethod
     def get_users_needing_maintenance(self, window_hours: int = 24) -> List[str]:
         pass
 
@@ -104,17 +107,26 @@ class GraphStore(ABC):
         pass
 
     @abstractmethod
-    def get_stale_nodes(self, user_id: str, days: int = 30, conf_threshold: float = 0.35) -> List[Node]:
+    def get_contradiction_pairs(self, user_id: str) -> List[Tuple[Node, Node, UUID]]:
         pass
 
     @abstractmethod
-    def get_contradiction_pairs(self, user_id: str) -> List[tuple]:
+    def get_stale_nodes(self, user_id: str, days: int = 30) -> List[Node]:
         pass
 
     @abstractmethod
     def get_nodes_for_strengthening(self, user_id: str, min_evidence: int = 5) -> List[Node]:
         pass
 
-    def traverse_graph(self, start_node_ids: List[UUID], depth: int, user_id: str) -> List[Node]:
-        """Optional optimized traversal. Returns nodes only by default."""
-        return []
+    @abstractmethod
+    def traverse_graph(self, start_node_ids: List[UUID], depth: int, user_id: str) -> Tuple[List[Node], List[Edge]]:
+        """Optional optimized traversal. Returns nodes and edges."""
+        pass
+
+    @abstractmethod
+    def list_nodes(self, user_id: str, limit: int = 100) -> List[Node]:
+        pass
+
+    @abstractmethod
+    def get_nodes_by_entity(self, entity: str, user_id: str) -> List[Node]:
+        pass

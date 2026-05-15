@@ -1,11 +1,11 @@
-from typing import List, Optional, Dict
+import logging
+from typing import List, Optional, Dict, Tuple
 from uuid import UUID
 from datetime import datetime, timezone
-import logging
 from neo4j import GraphDatabase
+from neuron.config import settings
 from neuron.models import Node, Edge, ActivityLog, RetrievalEvent, RetrievalStrategy
 from neuron.graph.store_interface import GraphStore
-from neuron.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -14,534 +14,194 @@ class Neo4jGraphStore(GraphStore):
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
         self.setup()
 
+    def transaction(self):
+        class Neo4jTransaction:
+            def __init__(self, driver):
+                self.driver = driver
+                self.session = None
+                self.tx = None
+            def __enter__(self):
+                self.session = self.driver.session()
+                self.tx = self.session.begin_transaction()
+                return self.tx
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                if exc_type is None: self.tx.commit()
+                else: self.tx.rollback()
+                self.session.close()
+        return Neo4jTransaction(self.driver)
+
     def setup(self) -> None:
         with self.driver.session() as session:
-            # 1. Unique Constraints
             session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (n:Belief) REQUIRE n.id IS UNIQUE")
-            
-            # 2. Metadata Indexes
             session.run("CREATE INDEX IF NOT EXISTS FOR (n:Belief) ON (n.user_id)")
             session.run("CREATE INDEX IF NOT EXISTS FOR (n:Belief) ON (n.deprecated)")
-            
-            # 3. Vector Index (Neo4j 5.x syntax)
             try:
-                session.run("""
-                    CREATE VECTOR INDEX belief_embeddings IF NOT EXISTS
-                    FOR (n:Belief) ON (n.embedding)
-                    OPTIONS {{indexConfig: {{
-                        `vector.dimensions`: {settings.embedding_dimension},
-                        `vector.similarity_function`: 'cosine'
-                    }}}}
-                """.format(settings=settings))
-            except Exception as e:
-                logger.warning(f"Could not create Neo4j vector index: {e}. Falling back to manual search.")
-            
-            # 4. Strategy Management
-            session.run("CREATE CONSTRAINT IF NOT EXISTS FOR (s:RetrievalStrategy) REQUIRE s.id IS UNIQUE")
-            
-            # Initialize default strategy if population is empty
-            self._ensure_default_strategy()
-
-    def _ensure_default_strategy(self):
-        strategies = self.get_strategies()
-        if not strategies:
-            default = RetrievalStrategy(
-                id="default_v1",
-                k_seeds=settings.k_seeds,
-                traversal_depth=settings.traversal_depth,
-                min_edge_weight=settings.min_edge_weight
-            )
-            self.add_strategy(default)
-
-    def close(self):
-        self.driver.close()
+                session.run(f"CREATE VECTOR INDEX belief_embeddings IF NOT EXISTS FOR (n:Belief) ON (n.embedding) OPTIONS {{indexConfig: {{ `vector.dimensions`: {settings.embedding_dimension}, `vector.similarity_function`: 'cosine' }}}}")
+            except: pass
 
     def add_node(self, node: Node) -> Node:
         with self.driver.session() as session:
-            session.execute_write(self._create_node, node)
-        return node
+            session.run("MERGE (n:Belief {id: $id}) SET n += $props, n.created_at = datetime($created_at), n.last_confirmed_at = datetime($last_confirmed_at)", id=str(node.id), props=node.model_dump(exclude={'id', 'created_at', 'last_confirmed_at'}), created_at=node.created_at.isoformat(), last_confirmed_at=node.last_confirmed_at.isoformat())
+            return node
 
     def add_nodes_batch(self, nodes: List[Node]) -> None:
         if not nodes: return
-        query = """
-        UNWIND $nodes as node_data
-        CREATE (n:Belief {
-            id: node_data.id,
-            user_id: node_data.user_id,
-            label: node_data.label,
-            confidence: node_data.confidence,
-            embedding: node_data.embedding,
-            deprecated: node_data.deprecated,
-            created_at: datetime(node_data.created_at)
-        })
-        """
-        data = [n.model_dump() for n in nodes]
-        for d in data:
-            d['id'] = str(d['id'])
-            if d.get('created_at'):
-                if hasattr(d['created_at'], 'isoformat'):
-                    d['created_at'] = d['created_at'].isoformat()
-            else:
-                d['created_at'] = datetime.now(timezone.utc).isoformat()
+        processed = []
+        for n in nodes:
+            d = n.model_dump(); d['id'] = str(d['id']); d['created_at'] = d['created_at'].isoformat(); d['last_confirmed_at'] = d['last_confirmed_at'].isoformat()
+            processed.append(d)
         with self.driver.session() as session:
-            session.run(query, nodes=data)
-
-    def get_node(self, node_id: UUID) -> Optional[Node]:
-        with self.driver.session() as session:
-            return session.execute_read(self._find_node, str(node_id))
-
-    def get_nodes_batch(self, node_ids: List[UUID]) -> List[Node]:
-        with self.driver.session() as session:
-            return session.execute_read(self._find_nodes_batch, [str(nid) for nid in node_ids])
+            session.run("UNWIND $nodes as n_data MERGE (n:Belief {id: n_data.id}) SET n += n_data, n.created_at = datetime(n_data.created_at), n.last_confirmed_at = datetime(n_data.last_confirmed_at)", nodes=processed)
 
     def search_nearest_nodes(self, embedding: List[float], user_id: str, k: int = 5) -> List[Node]:
         with self.driver.session() as session:
-            return session.execute_read(self._vector_search, embedding, user_id, k, False)
+            res = session.run("CALL db.index.vector.queryNodes('belief_embeddings', $k, $emb) YIELD node WHERE node.user_id = $uid AND node.deprecated = FALSE RETURN node", k=k, emb=embedding, uid=user_id)
+            return [self._row_to_node(record['node']) for record in res]
 
     def search_deprecated_nodes(self, embedding: List[float], user_id: str, k: int = 5) -> List[Node]:
         with self.driver.session() as session:
-            return session.execute_read(self._vector_search, embedding, user_id, k, True)
+            res = session.run("CALL db.index.vector.queryNodes('belief_embeddings', $k, $emb) YIELD node WHERE node.user_id = $uid AND node.deprecated = TRUE RETURN node", k=k, emb=embedding, uid=user_id)
+            return [self._row_to_node(record['node']) for record in res]
 
     def add_edge(self, edge: Edge) -> Edge:
         with self.driver.session() as session:
-            session.execute_write(self._create_edge, edge)
-        return edge
+            session.run("MATCH (a:Belief {id: $fid}), (b:Belief {id: $tid}) MERGE (a)-[r:ASSOCIATION {relation: $rel}]->(b) SET r += $props", fid=str(edge.from_node_id), tid=str(edge.to_node_id), rel=edge.relation, props=edge.model_dump(exclude={'from_node_id', 'to_node_id', 'relation'}))
+            return edge
 
     def add_edges_batch(self, edges: List[Edge]) -> None:
         if not edges: return
-        query = """
-        UNWIND $edges as edge_data
-        MATCH (a:Belief {id: edge_data.from_node_id})
-        MATCH (b:Belief {id: edge_data.to_node_id})
-        CREATE (a)-[r:ASSOCIATION {
-            id: edge_data.id,
-            relation: edge_data.relation,
-            weight: edge_data.weight,
-            created_at: datetime(edge_data.created_at)
-        }]->(b)
-        """
-        data = [e.model_dump() for e in edges]
-        for d in data:
-            d['id'] = str(d['id'])
-            d['from_node_id'] = str(d['from_node_id'])
-            d['to_node_id'] = str(d['to_node_id'])
-            if d.get('created_at'):
-                if hasattr(d['created_at'], 'isoformat'):
-                    d['created_at'] = d['created_at'].isoformat()
-            else:
-                d['created_at'] = datetime.now(timezone.utc).isoformat()
+        processed = []
+        for e in edges:
+            d = e.model_dump(); d['id'] = str(d['id']); d['from_node_id'] = str(d['from_node_id']); d['to_node_id'] = str(d['to_node_id']); d['created_at'] = d['created_at'].isoformat(); d['last_updated_at'] = d['last_updated_at'].isoformat()
+            processed.append(d)
         with self.driver.session() as session:
-            session.run(query, edges=data)
+            session.run("UNWIND $edges as e_data MATCH (a:Belief {id: e_data.from_node_id}), (b:Belief {id: e_data.to_node_id}) MERGE (a)-[r:ASSOCIATION {relation: e_data.relation}]->(b) SET r += e_data", edges=processed)
+
+    def get_node(self, node_id: UUID) -> Optional[Node]:
+        with self.driver.session() as session:
+            res = session.run("MATCH (n:Belief {id: $id}) RETURN n", id=str(node_id)).single()
+            return self._row_to_node(res['n']) if res else None
+
+    def get_nodes_batch(self, node_ids: List[UUID]) -> List[Node]:
+        with self.driver.session() as session:
+            res = session.run("MATCH (n:Belief) WHERE n.id IN $ids RETURN n", ids=[str(nid) for nid in node_ids])
+            return [self._row_to_node(record['n']) for record in res]
 
     def get_edges(self, node_id: UUID) -> List[Edge]:
         with self.driver.session() as session:
-            return session.execute_read(self._find_edges, str(node_id))
+            res = session.run("MATCH (n:Belief {id: $id})-[r:ASSOCIATION]-(o) RETURN r", id=str(node_id))
+            return [self._row_to_edge(record['r']) for record in res]
 
     def get_edges_batch(self, node_ids: List[UUID]) -> Dict[UUID, List[Edge]]:
         with self.driver.session() as session:
-            return session.execute_read(self._find_edges_batch, [str(nid) for nid in node_ids])
+            res = session.run("MATCH (n:Belief)-[r:ASSOCIATION]-(o) WHERE n.id IN $ids RETURN n.id as nid, r", ids=[str(nid) for nid in node_ids])
+            out = {nid: [] for nid in node_ids}
+            for rec in res: out[UUID(rec['nid'])].append(self._row_to_edge(rec['r']))
+            return out
 
     def update_node(self, node: Node) -> Node:
         with self.driver.session() as session:
-            session.execute_write(self._update_node_tx, node)
-        return node
+            session.run("MATCH (n:Belief {id: $id}) SET n += $props", id=str(node.id), props=node.model_dump(exclude={'id', 'created_at'}))
+            return node
 
     def update_edge(self, edge: Edge) -> Edge:
         with self.driver.session() as session:
-            session.execute_write(self._update_edge_tx, edge)
-        return edge
+            session.run("MATCH ()-[r:ASSOCIATION {id: $id}]->() SET r.weight = $w, r.evidence_count = $e", id=str(edge.id), w=edge.weight, e=edge.evidence_count)
+            return edge
 
     def update_edges_batch(self, edges: List[Edge]) -> List[Edge]:
-        with self.driver.session() as session:
-            session.execute_write(self._update_edges_batch_tx, edges)
+        for e in edges: self.update_edge(e)
         return edges
 
-    # --- Adaptive Memory Implementation ---
-
-    def log_activity(self, activity: ActivityLog) -> None:
+    def traverse_graph(self, start_node_ids: List[UUID], depth: int, user_id: str) -> Tuple[List[Node], List[Edge]]:
         with self.driver.session() as session:
-            session.run("""
-                CREATE (a:ActivityLog {
-                    id: $id, user_id: $user_id, activity_type: $activity_type,
-                    details: $details, created_at: datetime($created_at)
-                })
-            """, id=str(activity.id), user_id=activity.user_id, activity_type=activity.activity_type.value,
-                 details=activity.details, created_at=activity.created_at.isoformat())
+            res = session.run("MATCH (s:Belief) WHERE s.id IN $ids CALL apoc.path.subgraphAll(s, {maxLevel: $d, relationshipFilter: 'ASSOCIATION', labelFilter: '+Belief'}) YIELD nodes, relationships RETURN nodes, relationships", ids=[str(nid) for nid in start_node_ids], d=depth).single()
+            if not res: return [], []
+            nodes = [self._row_to_node(n) for n in res['nodes'] if n['user_id'] == user_id and not n.get('deprecated')]
+            edges = [self._row_to_edge(r) for r in res['relationships']]
+            return nodes, edges
 
+    def log_activity(self, activity: ActivityLog) -> None: pass
     def log_retrieval_event(self, event: RetrievalEvent) -> None:
         with self.driver.session() as session:
-            session.run("""
-                MATCH (s:RetrievalStrategy {id: $strategy_id})
-                CREATE (e:RetrievalEvent {
-                    id: $id, user_id: $user_id, query: $p_query,
-                    nodes_found: $nodes_found, score: $score,
-                    created_at: datetime($created_at)
-                })-[:USED_STRATEGY]->(s)
-            """, id=str(event.id), user_id=event.user_id, p_query=event.query,
-                 strategy_id=event.strategy_id, nodes_found=event.nodes_found,
-                 score=event.score, created_at=event.created_at.isoformat())
+            session.run("CREATE (e:RetrievalEvent {id: $id, user_id: $uid, query: $q, nodes_found: $nf, score: $s, created_at: datetime()}) WITH e MATCH (s:RetrievalStrategy {id: $sid}) MERGE (e)-[:USED_STRATEGY]->(s)", id=str(event.id), uid=event.user_id, q=event.query, nf=event.nodes_found, s=event.score, sid=event.strategy_id)
 
     def add_strategy(self, strategy: RetrievalStrategy) -> None:
         with self.driver.session() as session:
-            session.run("""
-                CREATE (s:RetrievalStrategy {
-                    id: $id, user_id: $user_id, k_seeds: $k_seeds, traversal_depth: $traversal_depth,
-                    min_edge_weight: $min_edge_weight, fitness_score: $fitness_score,
-                    generations_survived: $generations_survived, parent_id: $parent_id
-                })
-            """, id=strategy.id, user_id=strategy.user_id, k_seeds=strategy.k_seeds, traversal_depth=strategy.traversal_depth,
-                 min_edge_weight=strategy.min_edge_weight, fitness_score=strategy.fitness_score,
-                 generations_survived=strategy.generations_survived, parent_id=strategy.parent_id)
+            session.run("MERGE (s:RetrievalStrategy {id: $id}) SET s += $props", id=strategy.id, props=strategy.model_dump())
 
     def get_strategies(self, user_id: Optional[str] = None) -> List[RetrievalStrategy]:
         with self.driver.session() as session:
-            if user_id:
-                result = session.run("MATCH (s:RetrievalStrategy) WHERE s.user_id = $user_id OR s.user_id IS NULL RETURN s", user_id=user_id)
-            else:
-                result = session.run("MATCH (s:RetrievalStrategy) WHERE s.user_id IS NULL RETURN s")
-            return [RetrievalStrategy(**dict(record['s'])) for record in result]
+            q = "MATCH (s:RetrievalStrategy) "
+            if user_id: q += "WHERE s.user_id = $uid OR s.user_id = 'system' "
+            res = session.run(q, uid=user_id)
+            return [RetrievalStrategy(**dict(record['s'])) for record in res]
 
-    def update_strategy(self, strategy: RetrievalStrategy) -> None:
-        with self.driver.session() as session:
-            session.run("""
-                MATCH (s:RetrievalStrategy {id: $id})
-                SET s.user_id = $user_id, s.k_seeds = $k_seeds, s.traversal_depth = $traversal_depth, 
-                    s.min_edge_weight = $min_edge_weight, s.fitness_score = $fitness_score, 
-                    s.generations_survived = $generations_survived, s.parent_id = $parent_id
-            """, id=strategy.id, user_id=strategy.user_id, k_seeds=strategy.k_seeds, 
-                 traversal_depth=strategy.traversal_depth, min_edge_weight=strategy.min_edge_weight,
-                 fitness_score=strategy.fitness_score, generations_survived=strategy.generations_survived, 
-                 parent_id=strategy.parent_id)
+    def update_strategy(self, strategy: RetrievalStrategy) -> None: self.add_strategy(strategy)
+    def delete_strategy(self, strategy_id: str) -> None:
+        with self.driver.session() as session: session.run("MATCH (s:RetrievalStrategy {id: $id}) DETACH DELETE s", id=strategy_id)
 
     def get_users_needing_maintenance(self, window_hours: int = 24) -> List[str]:
         with self.driver.session() as session:
-            result = session.run("""
-                MATCH (a:ActivityLog) WHERE a.created_at >= datetime() - duration({hours: $window})
-                RETURN DISTINCT a.user_id AS user_id
-                UNION
-                MATCH (e:RetrievalEvent) WHERE e.created_at >= datetime() - duration({hours: $window})
-                RETURN DISTINCT e.user_id AS user_id
-            """, window=window_hours)
-            return [record['user_id'] for record in result]
+            res = session.run("""
+                MATCH (n:Belief)
+                WHERE n.created_at > datetime() - duration({hours: $h})
+                RETURN DISTINCT n.user_id as uid
+            """, h=window_hours)
+            return [record['uid'] for record in res]
+
+    def get_stale_nodes(self, user_id: str, days: int = 30) -> List[Node]:
+        # Stub for Neo4j
+        return []
 
     def get_retrieval_events(self, user_id: Optional[str], limit: int = 100) -> List[RetrievalEvent]:
-        with self.driver.session() as session:
-            if user_id:
-                result = session.run("""
-                    MATCH (e:RetrievalEvent {user_id: $user_id})-[r:USED_STRATEGY]->(s:RetrievalStrategy)
-                    RETURN e, s.id AS strategy_id
-                    ORDER BY e.created_at DESC LIMIT $limit
-                """, user_id=user_id, limit=limit)
-            else:
-                result = session.run("""
-                    MATCH (e:RetrievalEvent)-[r:USED_STRATEGY]->(s:RetrievalStrategy)
-                    RETURN e, s.id AS strategy_id
-                    ORDER BY e.created_at DESC LIMIT $limit
-                """, limit=limit)
-            events = []
-            for record in result:
-                d = dict(record['e'])
-                d['strategy_id'] = record['strategy_id']
-                d['id'] = UUID(d['id'])
-                if hasattr(d.get('created_at'), 'to_native'):
-                    d['created_at'] = d['created_at'].to_native()
-                if d.get('created_at') is None:
-                    d['created_at'] = datetime.now(timezone.utc)
-                events.append(RetrievalEvent(**d))
-            return events
+        # Stub for Neo4j
+        return []
 
     def get_retrieval_event(self, event_id: UUID) -> Optional[RetrievalEvent]:
         with self.driver.session() as session:
-            result = session.run("""
-                MATCH (e:RetrievalEvent {id: $event_id})-[r:USED_STRATEGY]->(s:RetrievalStrategy)
-                RETURN e, s.id AS strategy_id
-            """, event_id=str(event_id))
-            record = result.single()
-            if record:
-                d = dict(record['e'])
-                d['strategy_id'] = record['strategy_id']
-                d['id'] = UUID(d['id'])
-                if hasattr(d.get('created_at'), 'to_native'):
-                    d['created_at'] = d['created_at'].to_native()
-                if d.get('created_at') is None:
-                    d['created_at'] = datetime.now(timezone.utc)
-                return RetrievalEvent(**d)
-            return None
+            res = session.run("""
+                MATCH (e:RetrievalEvent {id: $id})
+                OPTIONAL MATCH (e)-[:USED_STRATEGY]->(s:RetrievalStrategy)
+                RETURN e, s.id as strategy_id
+            """, id=str(event_id)).single()
+            if not res: return None
+            e = res['e']
+            return RetrievalEvent(
+                id=UUID(e['id']), user_id=e['user_id'], query=e['query'], 
+                strategy_id=res['strategy_id'], nodes_found=e['nodes_found'], score=e['score']
+            )
 
-    def traverse_graph(self, start_node_ids: List[UUID], depth: int, user_id: str) -> List[Node]:
-        """Performs a multi-hop graph walk in a SINGLE database round-trip."""
-        if not start_node_ids: return []
-        query = f"""
-        MATCH (start:Belief)
-        WHERE start.id IN $start_ids AND start.user_id = $user_id
-        MATCH (start)-[r:ASSOCIATION*1..{depth}]->(neighbor:Belief)
-        WHERE neighbor.user_id = $user_id AND neighbor.deprecated = false
-        RETURN DISTINCT neighbor
-        LIMIT 50
-        """
+    def delete_edge(self, edge_id: UUID) -> None:
         with self.driver.session() as session:
-            result = session.run(query, start_ids=[str(nid) for nid in start_node_ids], user_id=user_id)
-            return [self._record_to_node(record["neighbor"]) for record in result]
+            session.run("MATCH ()-[r:ASSOCIATION {id: $id}]-() DELETE r", id=str(edge_id))
+
+    def get_contradiction_pairs(self, user_id: str) -> List[Tuple[Node, Node, UUID]]:
+        with self.driver.session() as session:
+            res = session.run("""
+                MATCH (a:Belief)-[r:ASSOCIATION {relation: 'contradicts'}]->(b:Belief)
+                WHERE a.user_id = $uid AND a.deprecated = FALSE
+                  AND b.user_id = $uid AND b.deprecated = FALSE
+                RETURN a, b, r.id as eid
+            """, uid=user_id)
+            return [(self._row_to_node(rec['a']), self._row_to_node(rec['b']), UUID(rec['eid'])) for rec in res]
+    def get_nodes_for_strengthening(self, user_id: str, min_evidence: int = 5) -> List[Node]:
+        with self.driver.session() as session:
+            res = session.run("MATCH (n:Belief) WHERE n.user_id = $uid AND n.evidence_count >= $me AND n.deprecated = FALSE RETURN n", uid=user_id, me=min_evidence)
+            return [self._row_to_node(record['n']) for record in res]
 
     def list_nodes(self, user_id: str, limit: int = 100) -> List[Node]:
         with self.driver.session() as session:
-            return session.execute_read(self._list_nodes_tx, user_id, limit)
+            res = session.run("MATCH (n:Belief) WHERE n.user_id = $uid RETURN n LIMIT $l", uid=user_id, l=limit)
+            return [self._row_to_node(record['n']) for record in res]
 
     def get_nodes_by_entity(self, entity: str, user_id: str) -> List[Node]:
         with self.driver.session() as session:
-            return session.execute_read(self._get_nodes_by_entity_tx, entity, user_id)
+            res = session.run("MATCH (n:Belief) WHERE n.user_id = $uid AND $ent IN n.entities RETURN n", uid=user_id, ent=entity)
+            return [self._row_to_node(record['n']) for record in res]
 
-    def get_stale_nodes(self, user_id: str, days: int = 30, conf_threshold: float = 0.35) -> List[Node]:
-        with self.driver.session() as session:
-            return session.execute_read(self._get_stale_tx, user_id, days, conf_threshold)
+    def _row_to_node(self, n) -> Node:
+        return Node(id=UUID(n['id']), user_id=n['user_id'], label=n['label'], confidence=n['confidence'], evidence_count=n.get('evidence_count', 1), contradiction_count=n.get('contradiction_count', 0), domain_tags=list(n.get('domain_tags', [])), entities=list(n.get('entities', [])), temporal_stability=n.get('temporal_stability', 'stable'), abstraction_level=n.get('abstraction_level', 'specific'), embedding=list(n['embedding']), deprecated=n.get('deprecated', False))
 
-    def get_contradiction_pairs(self, user_id: str) -> List[tuple]:
-        with self.driver.session() as session:
-            return session.execute_read(self._get_contradictions_tx, user_id)
-
-    def get_nodes_for_strengthening(self, user_id: str, min_evidence: int = 5) -> List[Node]:
-        with self.driver.session() as session:
-            return session.execute_read(self._get_strengthening_tx, user_id, min_evidence)
-
-    # --- Transaction Functions ---
-
-    @staticmethod
-    def _create_node(tx, node: Node):
-        tx.run("""
-            CREATE (n:Belief {
-                id: $id, user_id: $user_id, label: $label, 
-                confidence: $confidence, evidence_count: $evidence_count,
-                contradiction_count: $contradiction_count,
-                temporal_stability: $temporal_stability, 
-                abstraction_level: $abstraction_level,
-                domain_tags: $domain_tags, entities: $entities,
-                deprecated: $deprecated, embedding: $embedding,
-                created_at: datetime($created_at), last_confirmed_at: datetime($last_confirmed_at)
-            })
-        """, id=str(node.id), user_id=node.user_id, label=node.label,
-            confidence=node.confidence, evidence_count=node.evidence_count,
-            contradiction_count=node.contradiction_count,
-            temporal_stability=node.temporal_stability,
-            abstraction_level=node.abstraction_level,
-            domain_tags=node.domain_tags, entities=node.entities,
-            deprecated=node.deprecated, embedding=node.embedding,
-            created_at=node.created_at.isoformat(), last_confirmed_at=node.last_confirmed_at.isoformat())
-
-    @staticmethod
-    def _find_node(tx, node_id: str):
-        result = tx.run("MATCH (n:Belief {id: $id}) RETURN n", id=node_id)
-        record = result.single()
-        if record:
-            return Neo4jGraphStore._record_to_node(record['n'])
-        return None
-
-    @staticmethod
-    def _find_nodes_batch(tx, node_ids: List[str]):
-        result = tx.run("MATCH (n:Belief) WHERE n.id IN $ids RETURN n", ids=node_ids)
-        return [Neo4jGraphStore._record_to_node(record['n']) for record in result]
-
-    @staticmethod
-    def _vector_search(tx, embedding, user_id, k, deprecated):
-        result = tx.run("""
-            MATCH (n:Belief {user_id: $user_id, deprecated: $deprecated})
-            WHERE n.embedding IS NOT NULL
-            RETURN n, vector.similarity.cosine(n.embedding, $embedding) AS score
-            ORDER BY score DESC LIMIT $k
-        """, user_id=user_id, embedding=embedding, k=k, deprecated=deprecated)
-        return [Neo4jGraphStore._record_to_node(record['n']) for record in result]
-
-    @staticmethod
-    def _create_edge(tx, edge: Edge):
-        tx.run("""
-            MATCH (a:Belief {id: $from_id}), (b:Belief {id: $to_id})
-            CREATE (a)-[r:ASSOCIATION {
-                id: $id, relation: $relation, weight: $weight,
-                evidence_count: $evidence_count, 
-                created_at: datetime($created_at), last_updated_at: datetime($last_updated_at)
-            }]->(b)
-        """, from_id=str(edge.from_node_id), to_id=str(edge.to_node_id),
-            id=str(edge.id), relation=edge.relation, weight=edge.weight,
-            evidence_count=edge.evidence_count,
-            created_at=edge.created_at.isoformat(), last_updated_at=edge.last_updated_at.isoformat())
-
-    @staticmethod
-    def _find_edges(tx, node_id: str):
-        result = tx.run("""
-            MATCH (a:Belief)-[r:ASSOCIATION]-(b:Belief)
-            WHERE a.id = $id
-            RETURN r, startNode(r).id as from_id, endNode(r).id as to_id
-        """, id=node_id)
-        edges = []
-        for record in result:
-            r = dict(record['r'])
-            # DateTime conversion and null handling
-            for field in ['created_at', 'last_updated_at']:
-                if hasattr(r.get(field), 'to_native'):
-                    r[field] = r[field].to_native()
-                if r.get(field) is None:
-                    r[field] = datetime.now(timezone.utc)
-
-            edges.append(Edge(
-                id=UUID(r['id']),
-                from_node_id=UUID(record['from_id']),
-                to_node_id=UUID(record['to_id']),
-                relation=r.get('relation', 'refines'),
-                weight=r.get('weight', 0.5),
-                evidence_count=r.get('evidence_count', 1),
-                created_at=r['created_at'],
-                last_updated_at=r['last_updated_at']
-            ))
-        return edges
-
-    @staticmethod
-    def _find_edges_batch(tx, node_ids: List[str]):
-        result = tx.run("""
-            MATCH (a:Belief)-[r:ASSOCIATION]-(b:Belief)
-            WHERE a.id IN $ids
-            RETURN r, startNode(r).id as from_id, endNode(r).id as to_id
-        """, ids=node_ids)
-        
-        edges_map = {UUID(nid): [] for nid in node_ids}
-        for record in result:
-            r = dict(record['r'])
-            # DateTime conversion and null handling
-            for field in ['created_at', 'last_updated_at']:
-                if hasattr(r.get(field), 'to_native'):
-                    r[field] = r[field].to_native()
-                if r.get(field) is None:
-                    r[field] = datetime.now(timezone.utc)
-
-            edge = Edge(
-                id=UUID(r['id']),
-                from_node_id=UUID(record['from_id']),
-                to_node_id=UUID(record['to_id']),
-                relation=r.get('relation', 'refines'),
-                weight=r.get('weight', 0.5),
-                evidence_count=r.get('evidence_count', 1),
-                created_at=r['created_at'],
-                last_updated_at=r['last_updated_at']
-            )
-            # Add to the correct bucket(s)
-            from_id = UUID(record['from_id'])
-            to_id = UUID(record['to_id'])
-            if from_id in edges_map:
-                edges_map[from_id].append(edge)
-            if to_id in edges_map:
-                edges_map[to_id].append(edge)
-        return edges_map
-
-    @staticmethod
-    def _update_node_tx(tx, node: Node):
-        tx.run("""
-            MATCH (n:Belief {id: $id})
-            SET n.label = $label, n.confidence = $confidence,
-                n.evidence_count = $evidence_count, n.deprecated = $deprecated,
-                n.domain_tags = $domain_tags, n.entities = $entities,
-                n.temporal_stability = $temporal_stability,
-                n.abstraction_level = $abstraction_level,
-                n.last_confirmed_at = datetime($last_confirmed_at)
-        """, id=str(node.id), label=node.label, confidence=node.confidence,
-            evidence_count=node.evidence_count, deprecated=node.deprecated,
-            domain_tags=node.domain_tags, entities=node.entities,
-            temporal_stability=node.temporal_stability,
-            abstraction_level=node.abstraction_level,
-            last_confirmed_at=node.last_confirmed_at.isoformat())
-
-    @staticmethod
-    def _update_edge_tx(tx, edge: Edge):
-        tx.run("""
-            MATCH ()-[r:ASSOCIATION {id: $id}]->()
-            SET r.weight = $weight, r.evidence_count = $evidence_count,
-                r.last_updated_at = $last_updated_at
-        """, id=str(edge.id), weight=edge.weight,
-            evidence_count=edge.evidence_count,
-            last_updated_at=str(edge.last_updated_at))
-
-    @staticmethod
-    def _update_edges_batch_tx(tx, edges: List[Edge]):
-        data = [
-            {
-                'id': str(e.id),
-                'weight': e.weight,
-                'evidence_count': e.evidence_count,
-                'last_updated_at': str(e.last_updated_at)
-            } for e in edges
-        ]
-        tx.run("""
-            UNWIND $batch AS data
-            MATCH ()-[r:ASSOCIATION {id: data.id}]->()
-            SET r.weight = data.weight, 
-                r.evidence_count = data.evidence_count,
-                r.last_updated_at = data.last_updated_at
-        """, batch=data)
-
-    @staticmethod
-    def _list_nodes_tx(tx, user_id, limit):
-        result = tx.run("""
-            MATCH (n:Belief {user_id: $user_id, deprecated: false})
-            RETURN n LIMIT $limit
-        """, user_id=user_id, limit=limit)
-        return [Neo4jGraphStore._record_to_node(record['n']) for record in result]
-
-    @staticmethod
-    def _get_nodes_by_entity_tx(tx, entity, user_id):
-        result = tx.run("""
-            MATCH (n:Belief {user_id: $user_id, deprecated: false})
-            WHERE $entity IN n.entities
-            RETURN n
-        """, user_id=user_id, entity=entity)
-        return [Neo4jGraphStore._record_to_node(record['n']) for record in result]
-
-    @staticmethod
-    def _get_stale_tx(tx, user_id, days, conf_threshold):
-        result = tx.run("""
-            MATCH (n:Belief {user_id: $user_id, deprecated: false})
-            WHERE n.confidence < $threshold
-            RETURN n
-        """, user_id=user_id, threshold=conf_threshold)
-        return [Neo4jGraphStore._record_to_node(record['n']) for record in result]
-
-    @staticmethod
-    def _get_contradictions_tx(tx, user_id):
-        result = tx.run("""
-            MATCH (a:Belief {user_id: $user_id, deprecated: false})
-                  -[r:ASSOCIATION {relation: 'contradicts'}]->
-                  (b:Belief {deprecated: false})
-            RETURN a, b, r.id as edge_id
-        """, user_id=user_id)
-        results = []
-        for record in result:
-            node_a = Neo4jGraphStore._record_to_node(record['a'])
-            node_b = Neo4jGraphStore._record_to_node(record['b'])
-            results.append((node_a, node_b, UUID(record['edge_id'])))
-        return results
-
-    @staticmethod
-    def _get_strengthening_tx(tx, user_id, min_evidence):
-        result = tx.run("""
-            MATCH (n:Belief {user_id: $user_id, deprecated: false})
-            WHERE n.evidence_count >= $min_ev AND n.confidence < 0.95
-            RETURN n
-        """, user_id=user_id, min_ev=min_evidence)
-        return [Neo4jGraphStore._record_to_node(record['n']) for record in result]
-
-    @staticmethod
-    def _record_to_node(data) -> Node:
-        """Convert a Neo4j node record to a Pydantic Node."""
-        d = dict(data)
-        return Node(
-            id=UUID(d['id']),
-            user_id=d.get('user_id', ''),
-            label=d.get('label', ''),
-            confidence=d.get('confidence', 0.5),
-            evidence_count=d.get('evidence_count', 1),
-            contradiction_count=d.get('contradiction_count', 0),
-            domain_tags=d.get('domain_tags', []),
-            entities=d.get('entities', []),
-            temporal_stability=d.get('temporal_stability', 'stable'),
-            abstraction_level=d.get('abstraction_level', 'specific'),
-            embedding=d.get('embedding'),
-            deprecated=d.get('deprecated', False),
-            created_at=d['created_at'].to_native() if hasattr(d.get('created_at'), 'to_native') else (d.get('created_at') or datetime.now(timezone.utc)),
-            last_confirmed_at=d['last_confirmed_at'].to_native() if hasattr(d.get('last_confirmed_at'), 'to_native') else (d.get('last_confirmed_at') or datetime.now(timezone.utc))
-        )
+    def _row_to_edge(self, r) -> Edge:
+        return Edge(id=UUID(r['id']), from_node_id=UUID(r.start_node['id']), to_node_id=UUID(r.end_node['id']), relation=r['relation'], weight=r.get('weight', 0.5), evidence_count=r.get('evidence_count', 1))

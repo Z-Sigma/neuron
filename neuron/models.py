@@ -85,6 +85,7 @@ class RetrievalStrategy(BaseModel):
     k_seeds: int = 5
     traversal_depth: int = 3
     min_edge_weight: float = 0.6
+    novelty_threshold: float = 0.8
     fitness_score: float = 0.0
     generations_survived: int = 0
     parent_id: Optional[str] = None

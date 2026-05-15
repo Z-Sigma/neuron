@@ -15,14 +15,14 @@ CREATE TABLE IF NOT EXISTS nodes (
     entities TEXT[],
     temporal_stability TEXT CHECK (temporal_stability IN ('stable', 'volatile', 'time-bound')),
     abstraction_level TEXT CHECK (abstraction_level IN ('specific', 'pattern', 'principle')),
-    embedding vector(384),
+    embedding vector, -- Dynamic dimension
     deprecated BOOLEAN DEFAULT FALSE
 );
 
 CREATE TABLE IF NOT EXISTS edges (
     id UUID PRIMARY KEY,
-    from_node_id UUID REFERENCES nodes(id),
-    to_node_id UUID REFERENCES nodes(id),
+    from_node_id UUID REFERENCES nodes(id) ON DELETE CASCADE,
+    to_node_id UUID REFERENCES nodes(id) ON DELETE CASCADE,
     relation TEXT NOT NULL,
     weight FLOAT NOT NULL DEFAULT 0.5,
     evidence_count INTEGER NOT NULL DEFAULT 1,
@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS retrieval_strategies (
     k_seeds INTEGER NOT NULL,
     traversal_depth INTEGER NOT NULL,
     min_edge_weight FLOAT NOT NULL,
+    novelty_threshold FLOAT DEFAULT 0.8,
     fitness_score FLOAT DEFAULT 0.0,
     generations_survived INTEGER DEFAULT 0,
     parent_id TEXT

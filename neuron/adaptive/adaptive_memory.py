@@ -26,7 +26,15 @@ class AdaptiveMemory(Memory):
             self.scheduler.start()
 
     def process(self, text: str, user_id: str):
-        node = super().process(text, user_id)
+        # 1. Select Strategy (Adaptive Ingestion)
+        novelty_threshold = None
+        if settings.enable_adaptive_memory:
+            strategy = self.registry.select_strategy(user_id)
+            novelty_threshold = strategy.novelty_threshold
+
+        # 2. Process with adaptive threshold
+        node = super().process(text, user_id, novelty_threshold=novelty_threshold)
+        
         if settings.enable_adaptive_memory and node:
             self.store.log_activity(ActivityLog(
                 user_id=user_id,
@@ -42,11 +50,8 @@ class AdaptiveMemory(Memory):
     def search_archive(self, query: str, user_id: str) -> list:
         """
         Deep Recall — searches deprecated (archived) nodes only.
-        Use this when a standard retrieve() fails to find an answer.
         """
-        from neuron.filter.embedder import Embedder
-        embedder = Embedder()
-        embedding = embedder.embed(query)
+        embedding = self.embedder.embed(query)
         return self.store.search_deprecated_nodes(embedding, user_id, k=5)
 
     def retrieve(self, query: str, user_id: str, score_feedback: Optional[float] = None) -> Dict:
@@ -72,7 +77,7 @@ class AdaptiveMemory(Memory):
                 strategy_id=strategy.id,
                 nodes_found=len(result.get("direct_beliefs", []))
                 + len(result.get("related_context", [])),
-                score=score_feedback or 0.0
+                score=score_feedback if score_feedback is not None else 0.5
             )
             self.store.log_retrieval_event(event)
             

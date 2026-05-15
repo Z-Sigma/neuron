@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neuron | Enterprise Documentation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-typescript.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" defer></script>
+</head>
+<body class="enterprise-docs">
+    <canvas id="neural-bg" aria-hidden="true"></canvas>
+    <div class="sidebar-overlay" aria-hidden="true"></div>
+    <button type="button" class="mobile-nav-toggle" aria-label="Open navigation">☰</button>
+
+    <div class="layout">
+        <aside class="sidebar glass">
+            <div class="logo-area">
+                <a href="#overview" class="logo-link">
+                    <img src="logo.png" alt="Neuron Logo" class="logo-img">
+                    <span class="logo-text">neuron</span>
+                </a>
+                <span class="version-badge">v1.0.0</span>
+            </div>
+            <div class="sidebar-search">
+                <input type="search" id="doc-search" placeholder="Search docs…" autocomplete="off" aria-label="Search documentation">
+                <span class="search-hint">/</span>
+                <div id="search-results" class="search-results"></div>
+            </div>
+            <nav class="sidebar-nav" aria-label="Documentation">
+                <div class="nav-group">
+                    <h4 class="nav-title">Start</h4>
+                    <ul class="nav-list">
+                        <li><a href="#overview">Overview</a></li>
+                        <li><a href="#quickstart">Quickstart</a></li>
+                        <li><a href="#installation">Installation</a></li>
+                        <li><a href="#configuration">Configuration</a></li>
+                    </ul>
+                </div>
+                <div class="nav-group">
+                    <h4 class="nav-title">API</h4>
+                    <ul class="nav-list">
+                        <li><a href="#data-models">Data Models</a></li>
+                        <li><a href="#memory-api">Memory API</a></li>
+                        <li><a href="#batch-ingestion">Batch Ingestion</a></li>
+                        <li><a href="#retrieval">Retrieval</a></li>
+                        <li><a href="#adaptive-api">Adaptive Memory</a></li>
+                        <li><a href="#maintenance-coherence">Maintenance</a></li>
+                    </ul>
+                </div>
+                <div class="nav-group">
+                    <h4 class="nav-title">Advanced</h4>
+                    <ul class="nav-list">
+                        <li><a href="#internals">Internals</a></li>
+                        <li><a href="#graph-store">GraphStore</a></li>
+                        <li><a href="#http-api">HTTP API</a></li>
+                        <li><a href="#typescript-sdk">TypeScript SDK</a></li>
+                        <li><a href="#integrations">Integrations</a></li>
+                        <li><a href="#cli-daemon">CLI &amp; Daemon</a></li>
+                        <li><a href="#tuning-guide">Tuning Guide</a></li>
+                        <li><a href="#testing">Testing</a></li>
+                        <li><a href="#implementation-notes">Implementation Notes</a></li>
+                    </ul>
+                </div>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+
+<section id="overview" class="doc-block">
+<h1 class="page-title">Neuron Documentation</h1>
+<p class="lead"><strong>neuron</strong> (v1.0.0) is a graph-backed cognitive memory layer for AI agents. It ingests text, abstracts beliefs with an LLM, stores <strong>nodes</strong> and <strong>edges</strong>, and retrieves context with vector seeds plus graph expansion—optionally with adaptive strategy evolution and maintenance.</p>
+<div class="info-grid">
+<div class="info-card glass"><h3>Graph-backed</h3><p>Beliefs are linked by semantic edges; retrieval walks the graph from vector seeds.</p></div>
+<div class="info-card glass"><h3>Adaptive</h3><p>Per-user retrieval strategies evolve from feedback when <code>ENABLE_ADAPTIVE_MEMORY=true</code>.</p></div>
+<div class="info-card glass"><h3>Production storage</h3><p>Postgres+pgvector, Neo4j, or in-memory via pluggable <code>GraphStore</code>.</p></div>
+</div>
+<div class="mermaid-wrap"><pre class="mermaid">flowchart TD
+    %% 1. Ingestion Paths
+    subgraph Ingestion["1. Ingestion Pipelines"]
+        UI[User Input / Text Chunks]
+        
+        subgraph StandardMode["Standard Mode"]
+            SF[Surprise Filter]
+            SF -- "Matched (High Sim)" --> Confirm[Evidence Increment]
+            SF -- "Novel (Low Sim)" --> AE[Abstraction Engine]
+            AE -- Structured Metadata --> StoreNode[Create Node]
+        end
+        
+        subgraph BatchMode["Batch Modes (Fast/Deep)"]
+            BE[Batch Embedder]
+            IDD[Intra-Batch Dedupe]
+            GDD{Global Dedupe?}
+            EHL[Entity Hub Linking]
+            
+            BE --> IDD
+            IDD --> GDD
+            GDD -- "Deep Mode Only" --> EHL
+        end
+        
+        UI --> SF
+        UI --> BE
+    end
+
+    %% 2. Global Deduplication & Evidence
+    subgraph GlobalLogic["2. Global Logic & Evidence"]
+        GDD -- Yes --> Match[Search Store for Match]
+        Match -- "Found Match" --> EI[Evidence Increment + Entity Merge]
+        Match -- "Unique" --> AE2[LLM Metadata Extract]
+        GDD -- No --> StoreNode2[Create New Nodes]
+        
+        Confirm --> GS
+        EI -- Update --> GS
+        AE2 --> GS
+        StoreNode2 --> GS
+        EHL -- "Global Entity Search" --> GS
+    end
+
+    %% 3. Storage Layer
+    subgraph Storage["3. Storage Layer (GraphStore)"]
+        GS[(Knowledge Graph)]
+        NB[Nodes: Beliefs/Facts]
+        EB[Edges: Semantic Relations]
+        GS --> NB
+        GS --> EB
+    end
+
+    %% 4. Retrieval Path
+    subgraph Retrieval["4. Retrieval Pipeline"]
+        Query[User Query]
+        SR[Strategy Registry]
+        QE[Query Embedder]
+        DR{Deep Recall?}
+        GW[Graph Walk / Expansion]
+        MY[Myelination: Edge Weight Up]
+        CA[Context Assembly]
+        
+        Query --> SR
+        SR -- Pick Strategy --> QE
+        QE --> DR
+        DR -- Fails --> Archive[Search Deprecated Nodes]
+        DR -- Success --> GW
+        Archive -- Reactivate --> GW
+        GW -- Traversal --> GS
+        GW --> MY
+        MY -- Persist Weights --> GS
+        GW --> CA
+        CA --> Result[Final Context]
+    end
+
+    %% 5. Adaptive Learning Loop
+    subgraph Adaptive["5. Adaptive Learning Loop"]
+        Result --> Log[Log Retrieval Event]
+        Log --> FB[User Feedback / Score]
+        FB --> Registry[Update Strategy Fitness]
+        
+        subgraph SleepCycle["Sleep Cycle (Evolution & Coherence)"]
+            SC[Sleep Scheduler]
+            Cons[Sleep Consolidator]
+            Evol[Evolution Engine]
+            Maint[Memory Maintenance]
+            CD[Coherence Daemon]
+            
+            SC -- Trigger --> Cons
+            Cons -- Genetic Select --> Evol
+            Evol -- Mutate --> Registry
+            Cons --> Maint
+            Maint -- Prune / Merge Clusters --> GS
+            Cons --> CD
+            CD -- Resolve Conflicts --> GS
+        end
+    end
+</pre></div>
+<p>Public exports: <code>from neuron import Memory, AdaptiveMemory, Node, Edge, settings</code>. Requires <strong>Python 3.11+</strong>.</p>
+</section>
+
+<section id="quickstart" class="doc-block">
+<h2 class="section-title">Quickstart <a href="#quickstart" class="anchor-link">#</a></h2>
+<div class="code-example"><div class="code-header"><span>bash</span></div><pre><code class="language-bash">cd neuron
+pip install -e .
+set GRAPH_STORE_TYPE=in_memory
+python examples/demo.py</code></pre></div>
+<div class="code-example"><div class="code-header"><span>python</span></div><pre><code class="language-python">from neuron import Memory
+memory = Memory()
+memory.process("Project Apollo started in 1961.", user_id="user_1")
+ctx = memory.retrieve("When did Apollo start?", user_id="user_1")
+print(ctx["direct_beliefs"])</code></pre></div>
+</section>
+
+<section id="installation" class="doc-block">
+<h2 class="section-title">Installation &amp; deployment <a href="#installation" class="anchor-link">#</a></h2>
+<h3 class="subsection-title">Package install</h3>
+<div class="code-example"><div class="code-header"><span>bash</span></div><pre><code class="language-bash">pip install -e .</code></pre></div>
+<p>Dependencies include FastAPI, uvicorn, pydantic-settings, psycopg2-binary, pgvector, openai, anthropic, sentence-transformers, neo4j, celery, redis.</p>
+<h3 class="subsection-title">Postgres + pgvector</h3>
+<div class="code-example"><div class="code-header"><span>bash</span></div><pre><code class="language-bash">docker compose up -d db
+set DATABASE_URL=postgresql://postgres:postgres@localhost:5432/neuron
+set GRAPH_STORE_TYPE=postgres</code></pre></div>
+<div class="callout callout-warning"><div class="callout-title">Schema path</div><p>Run the API or setup from the <strong>repo root</strong> so <code>neuron/graph/schema.sql</code> resolves correctly.</p></div>
+<h3 class="subsection-title">Neo4j</h3>
+<div class="code-example"><div class="code-header"><span>bash</span></div><pre><code class="language-bash">set GRAPH_STORE_TYPE=neo4j
+set NEO4J_URI=bolt://localhost:7687</code></pre></div>
+<h3 class="subsection-title">HTTP API</h3>
+<div class="code-example"><div class="code-header"><span>bash</span></div><pre><code class="language-bash">python -m uvicorn neuron.api.server:app --host 0.0.0.0 --port 8000</code></pre></div>
+<h3 class="subsection-title">CLI</h3>
+<p><code>neuron init</code> creates <code>.env.example</code> in the current directory.</p>
+</section>
+
+<section id="configuration" class="doc-block">
+<h2 class="section-title">Configuration <a href="#configuration" class="anchor-link">#</a></h2>
+<p>All settings in <code>neuron/config.py</code> load from env + <code>.env</code>. Use <code>from neuron import settings</code> in Python.</p>
+<div class="table-wrap glass" style="padding:0;overflow:hidden">
+<table class="exhaustive-table">
+<thead><tr><th>Field</th><th>Env var</th><th>Type</th><th>Default</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr class="group-row"><td colspan="5">LLM</td></tr>
+<tr><td><code>llm_provider</code></td><td><code>LLM_PROVIDER</code></td><td>str</td><td><code>groq</code></td><td>openai | anthropic | groq | ollama</td></tr>
+<tr><td><code>openai_api_key</code></td><td><code>OPENAI_API_KEY</code></td><td>str?</td><td>None</td><td>OpenAI API key</td></tr>
+<tr><td><code>anthropic_api_key</code></td><td><code>ANTHROPIC_API_KEY</code></td><td>str?</td><td>None</td><td>Anthropic API key</td></tr>
+<tr><td><code>groq_api_key</code></td><td><code>GROQ_API_KEY</code></td><td>str?</td><td>None</td><td>Groq API key</td></tr>
+<tr><td><code>local_llm_model</code></td><td><code>LOCAL_LLM_MODEL</code></td><td>str</td><td><code>llama-3.3-70b-versatile</code></td><td>Groq/Ollama chat model</td></tr>
+<tr><td><code>default_model</code></td><td><code>DEFAULT_MODEL</code></td><td>str</td><td><code>gpt-4o-mini</code></td><td>OpenAI chat model</td></tr>
+<tr><td><code>abstraction_model</code></td><td><code>ABSTRACTION_MODEL</code></td><td>str</td><td><code>claude-3-5-sonnet-20240620</code></td><td>Anthropic abstraction model</td></tr>
+<tr class="group-row"><td colspan="5">Embeddings &amp; prompts</td></tr>
+<tr><td><code>embedding_model_name</code></td><td><code>EMBEDDING_MODEL_NAME</code></td><td>str</td><td><code>all-MiniLM-L6-v2</code></td><td>Local HF or OpenAI embedding model</td></tr>
+<tr><td><code>embedding_dimension</code></td><td><code>EMBEDDING_DIMENSION</code></td><td>int</td><td><code>384</code></td><td>Vector dimension (match model)</td></tr>
+<tr><td><code>abstraction_prompt</code></td><td><code>ABSTRACTION_PROMPT</code></td><td>str</td><td>(in code)</td><td>Single-chunk JSON abstraction prompt</td></tr>
+<tr><td><code>batch_abstraction_prompt</code></td><td><code>BATCH_ABSTRACTION_PROMPT</code></td><td>str</td><td>(in code)</td><td>Batch window JSON array prompt</td></tr>
+<tr class="group-row"><td colspan="5">Graph storage</td></tr>
+<tr><td><code>graph_store_type</code></td><td><code>GRAPH_STORE_TYPE</code></td><td>str</td><td><code>postgres</code></td><td>postgres | neo4j | in_memory</td></tr>
+<tr><td><code>database_url</code></td><td><code>DATABASE_URL</code></td><td>str</td><td><code>postgresql://postgres:postgres@localhost:5432/neuron</code></td><td>Postgres DSN</td></tr>
+<tr><td><code>neo4j_uri</code></td><td><code>NEO4J_URI</code></td><td>str</td><td><code>bolt://localhost:7687</code></td><td>Neo4j Bolt URI</td></tr>
+<tr><td><code>neo4j_user</code></td><td><code>NEO4J_USER</code></td><td>str</td><td><code>neo4j</code></td><td>Neo4j user</td></tr>
+<tr><td><code>neo4j_password</code></td><td><code>NEO4J_PASSWORD</code></td><td>str</td><td><code>password</code></td><td>Neo4j password</td></tr>
+<tr><td><code>redis_host</code></td><td><code>REDIS_HOST</code></td><td>str</td><td><code>localhost</code></td><td>Celery broker host (port 6379)</td></tr>
+<tr class="group-row"><td colspan="5">Memory / surprise</td></tr>
+<tr><td><code>base_novelty_threshold</code></td><td><code>BASE_NOVELTY_THRESHOLD</code></td><td>float</td><td><code>0.3</code></td><td>Novel if 1 - max_cosine_sim &gt;= threshold</td></tr>
+<tr><td><code>confirmation_range_start</code></td><td><code>CONFIRMATION_RANGE_START</code></td><td>float</td><td><code>0.75</code></td><td>Confirmation band lower bound</td></tr>
+<tr><td><code>confirmation_range_end</code></td><td><code>CONFIRMATION_RANGE_END</code></td><td>float</td><td><code>0.90</code></td><td>Confirmation band upper bound</td></tr>
+<tr class="group-row"><td colspan="5">Retrieval</td></tr>
+<tr><td><code>k_seeds</code></td><td><code>K_SEEDS</code></td><td>int</td><td><code>5</code></td><td>Vector seed count</td></tr>
+<tr><td><code>traversal_depth</code></td><td><code>TRAVERSAL_DEPTH</code></td><td>int</td><td><code>3</code></td><td>Graph walk depth</td></tr>
+<tr><td><code>max_context_nodes</code></td><td><code>MAX_CONTEXT_NODES</code></td><td>int</td><td><code>50</code></td><td>Max nodes in context</td></tr>
+<tr><td><code>min_edge_weight</code></td><td><code>MIN_EDGE_WEIGHT</code></td><td>float</td><td><code>0.6</code></td><td>Min edge weight to traverse</td></tr>
+<tr><td><code>min_confidence</code></td><td><code>MIN_CONFIDENCE</code></td><td>float</td><td><code>0.35</code></td><td>Min confidence for direct_beliefs</td></tr>
+<tr><td><code>batch_window_size</code></td><td><code>BATCH_WINDOW_SIZE</code></td><td>int</td><td><code>20</code></td><td>LLM window for process_batch_deep</td></tr>
+<tr><td><code>max_label_length</code></td><td><code>MAX_LABEL_LENGTH</code></td><td>int</td><td><code>2000</code></td><td>Label truncation limit</td></tr>
+<tr class="group-row"><td colspan="5">Adaptive</td></tr>
+<tr><td><code>enable_adaptive_memory</code></td><td><code>ENABLE_ADAPTIVE_MEMORY</code></td><td>bool</td><td><code>false</code></td><td>Enable adaptive features</td></tr>
+<tr><td><code>adaptive_mode</code></td><td><code>ADAPTIVE_MODE</code></td><td>str</td><td><code>auto</code></td><td>auto | manual | off</td></tr>
+<tr><td><code>maintenance_interval_hours</code></td><td><code>MAINTENANCE_INTERVAL_HOURS</code></td><td>int</td><td><code>24</code></td><td>Sleep scheduler interval</td></tr>
+<tr><td><code>strategy_population_size</code></td><td><code>STRATEGY_POPULATION_SIZE</code></td><td>int</td><td><code>8</code></td><td>Strategy population cap (intent)</td></tr>
+<tr><td><code>exploration_rate</code></td><td><code>EXPLORATION_RATE</code></td><td>float</td><td><code>0.2</code></td><td>Epsilon-greedy exploration</td></tr>
+<tr><td><code>min_events_before_evolution</code></td><td><code>MIN_EVENTS_BEFORE_EVOLUTION</code></td><td>int</td><td><code>50</code></td><td>Evolution gate (see implementation notes)</td></tr>
+<tr><td><code>judge_llm_model</code></td><td><code>JUDGE_LLM_MODEL</code></td><td>str</td><td><code>gpt-4o-mini</code></td><td>Reserved for LLM judge (stub)</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="data-models" class="doc-block">
+<h2 class="section-title">Data models <a href="#data-models" class="anchor-link">#</a></h2>
+<h3 class="subsection-title">Node</h3>
+<table class="param-table"><thead><tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>id</code></td><td>UUID</td><td>auto</td><td>Primary key</td></tr>
+<tr><td><code>user_id</code></td><td>str</td><td>required</td><td>Tenant isolation</td></tr>
+<tr><td><code>label</code></td><td>str</td><td>required</td><td>Distilled belief text (truncated to max_label_length)</td></tr>
+<tr><td><code>confidence</code></td><td>float</td><td>0.5</td><td>0.0–1.0</td></tr>
+<tr><td><code>evidence_count</code></td><td>int</td><td>1</td><td>Reinforcement count</td></tr>
+<tr><td><code>contradiction_count</code></td><td>int</td><td>0</td><td>Contradiction tally</td></tr>
+<tr><td><code>domain_tags</code></td><td>List[str]</td><td>[]</td><td>Topic tags</td></tr>
+<tr><td><code>entities</code></td><td>List[str]</td><td>[]</td><td>Named entities</td></tr>
+<tr><td><code>temporal_stability</code></td><td>enum</td><td>stable</td><td>stable | volatile | time-bound</td></tr>
+<tr><td><code>abstraction_level</code></td><td>enum</td><td>specific</td><td>specific | pattern | principle</td></tr>
+<tr><td><code>embedding</code></td><td>List[float]?</td><td>None</td><td>Vector for search</td></tr>
+<tr><td><code>deprecated</code></td><td>bool</td><td>false</td><td>Archived / pruned</td></tr>
+</tbody></table>
+<h3 class="subsection-title">Edge</h3>
+<table class="param-table"><thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>relation</code></td><td>enum</td><td>supports | contradicts | refines | depends_on | derived_from | temporal_successor | unresolved_tension</td></tr>
+<tr><td><code>weight</code></td><td>float</td><td>0.0–1.0 connection strength</td></tr>
+</tbody></table>
+<h3 class="subsection-title">Adaptive models</h3>
+<p><code>RetrievalStrategy</code>: id, user_id, k_seeds, traversal_depth, min_edge_weight, fitness_score, generations_survived, parent_id.</p>
+<p><code>RetrievalEvent</code>: id, user_id, query, strategy_id, nodes_found, score (0–1 feedback).</p>
+</section>
+
+<section id="memory-api" class="doc-block">
+<h2 class="section-title">Memory API <a href="#memory-api" class="anchor-link">#</a></h2>
+<p>Primary class: <code>neuron.memory.Memory</code>. Dependency injection via <code>store</code>, <code>embedder</code>, <code>engine</code>.</p>
+
+<div class="method-block glass">
+<div class="method-sig">Memory.__init__(store=None, embedder=None, engine=None)</div>
+<p class="method-desc">Wires GraphStore (from GRAPH_STORE_TYPE), Embedder, AbstractionEngine, SurpriseFilter, Retriever. Postgres failure falls back to in-memory when postgres is selected.</p>
+<table class="param-table"><thead><tr><th>Argument</th><th>Type</th><th>Default</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>store</code></td><td>GraphStore?</td><td>auto</td><td>Custom graph backend</td></tr>
+<tr><td><code>embedder</code></td><td>Embedder?</td><td>auto</td><td>Custom embedding engine</td></tr>
+<tr><td><code>engine</code></td><td>AbstractionEngine?</td><td>auto</td><td>Custom LLM abstraction</td></tr>
+</tbody></table>
+</div>
+
+<div class="method-block glass">
+<div class="method-sig">process(text: str, user_id: str) -&gt; Optional[Node]</div>
+<p class="method-desc">Surprise filter → confirmations (evidence +0.05) → if novel: extract, add node, entity + semantic edges.</p>
+<div class="code-example"><div class="code-header"><span>python</span></div><pre><code class="language-python">node = memory.process("Fact about project X", user_id="user_1")</code></pre></div>
+</div>
+
+<div class="method-block glass">
+<div class="method-sig">retrieve(query: str, user_id: str, **kwargs) -&gt; Dict</div>
+<p class="method-desc">Delegates to Retriever. Override retrieval via kwargs (else settings defaults).</p>
+<table class="param-table"><thead><tr><th>Kwarg</th><th>Type</th><th>Default (settings)</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>k_seeds</code></td><td>int</td><td>K_SEEDS (5)</td><td>Vector nearest neighbors</td></tr>
+<tr><td><code>traversal_depth</code></td><td>int</td><td>TRAVERSAL_DEPTH (3)</td><td>Graph hops</td></tr>
+<tr><td><code>min_edge_weight</code></td><td>float</td><td>MIN_EDGE_WEIGHT (0.6)</td><td>Skip weaker edges</td></tr>
+<tr><td><code>max_context_nodes</code></td><td>int</td><td>MAX_CONTEXT_NODES (50)</td><td>Context cap</td></tr>
+<tr><td><code>min_confidence</code></td><td>float</td><td>MIN_CONFIDENCE (0.35)</td><td>direct_beliefs floor</td></tr>
+</tbody></table>
+<div class="code-example"><div class="code-header"><span>json</span></div><pre><code class="language-json">{
+  "direct_beliefs": [{"label": "...", "confidence": 0.8, "evidence": 3}],
+  "related_context": [{"label": "...", "confidence": 0.6}],
+  "unresolved_tensions": [{"belief_a": "...", "belief_b": "...", "relation": "contradicts"}]
+}</code></pre></div>
+</div>
+
+<div class="method-block glass">
+<div class="method-sig">add_manual(text: str, user_id: str, confidence: float = 0.8) -&gt; Node</div>
+<p class="method-desc">Bypass surprise filter; still runs AbstractionEngine.extract.</p>
+</div>
+
+<div class="method-block glass">
+<div class="method-sig">process_batch_fast(texts, user_id, deduplication_threshold=0.95, knn_edges=3, global_deduplication=False) -&gt; Dict</div>
+<p class="method-desc">No LLM: batch embed, cosine dedupe, optional global store dedupe, kNN edges, bulk write.</p>
+<p><strong>Returns:</strong> <code>{"nodes_added", "edges_added", "duplicates_dropped"}</code></p>
+</div>
+
+<div class="method-block glass">
+<div class="method-sig">process_batch(texts, user_id, global_deduplication=False) -&gt; Dict</div>
+<p class="method-desc">Alias for <code>process_batch_fast</code>.</p>
+</div>
+
+<div class="method-block glass">
+<div class="method-sig">process_batch_deep(texts, user_id, window_size=None, deduplication_threshold=0.95, knn_edges=3, global_deduplication=False) -&gt; Dict</div>
+<p class="method-desc">Dedupe like fast, then windowed batch_extract; entity hub linking; global dedupe merges entities.</p>
+<p><strong>window_size</strong> defaults to <code>settings.batch_window_size</code> (20).</p>
+</div>
+
+<div class="method-block glass">
+<div class="method-sig">maintenance(user_id, stale_days=30, min_confidence=0.35, consolidate=True) -&gt; Dict</div>
+<p class="method-desc">Prune stale low-confidence nodes; optional entity-cluster consolidation via LLM.</p>
+<p><strong>Returns:</strong> <code>{"pruned", "consolidated"}</code></p>
+</div>
+</section>
+
+<section id="batch-ingestion" class="doc-block">
+<h2 class="section-title">Batch ingestion pipelines <a href="#batch-ingestion" class="anchor-link">#</a></h2>
+<h3 class="subsection-title">process_batch_fast</h3>
+<ol class="step-list">
+<li><code>embed_batch</code> → cosine similarity matrix</li>
+<li>Greedy intra-batch dedupe at <code>deduplication_threshold</code> (default 0.95)</li>
+<li>If <code>global_deduplication</code>: match store → evidence increment instead of new node</li>
+<li>Top <code>knn_edges</code> neighbors per kept row → <code>refines</code> edges</li>
+<li><code>add_nodes_batch</code> / <code>add_edges_batch</code></li>
+</ol>
+<h3 class="subsection-title">process_batch_deep</h3>
+<p>Same dedupe, then <code>AbstractionEngine.batch_extract</code> per window. Nodes use abstraction metadata; global dedupe also merges <code>entities</code> lists.</p>
+<h3 class="subsection-title">Global deduplication</h3>
+<p>Set <code>global_deduplication=True</code> on fast or deep batch to cross-check the store: matching nodes get <code>evidence_count += 1</code> and confidence bump (+0.05, cap 0.95) instead of duplicate nodes.</p>
+</section>
+
+<section id="retrieval" class="doc-block">
+<h2 class="section-title">Retrieval pipeline <a href="#retrieval" class="anchor-link">#</a></h2>
+<p>Implemented in <code>neuron.retrieval.retriever.Retriever</code>.</p>
+<ol class="step-list">
+<li>Embed query; <code>search_nearest_nodes</code> with <code>k_seeds</code></li>
+<li><strong>Deep recall</strong>: if no seeds or top similarity &lt; <strong>0.6</strong>, search <code>search_deprecated_nodes</code>; reactivate if archived sim &gt; 0.6</li>
+<li>Graph expansion: native <code>traverse_graph</code> (Neo4j) or Python BFS via <code>get_edges_batch</code></li>
+<li><strong>Myelination</strong>: traversed edges <code>weight *= 1.05</code> (cap 1.0), <code>evidence_count += 1</code>, batch <code>update_edges_batch</code></li>
+<li>Assemble <code>direct_beliefs</code>, <code>related_context</code>, <code>unresolved_tensions</code></li>
+</ol>
+</section>
+
+<section id="adaptive-api" class="doc-block">
+<h2 class="section-title">Adaptive Memory API <a href="#adaptive-api" class="anchor-link">#</a></h2>
+<div class="callout callout-info"><div class="callout-title">Enable via environment</div>
+<p>Use <code>AdaptiveMemory()</code> with <code>ENABLE_ADAPTIVE_MEMORY=true</code>. Mode is <code>ADAPTIVE_MODE</code> env (<code>auto</code> | <code>manual</code> | <code>off</code>) — not a constructor argument. <code>auto</code> starts <code>SleepScheduler</code> background thread.</p></div>
+
+<div class="method-block glass">
+<div class="method-sig">AdaptiveMemory.__init__(*args, **kwargs)</div>
+<p class="method-desc">Same DI as Memory; adds StrategyRegistry, SleepConsolidator.</p>
+</div>
+
+<div class="method-block glass">
+<div class="method-sig">retrieve(query, user_id, score_feedback=None) -&gt; Dict</div>
+<p class="method-desc">When adaptive enabled: epsilon-greedy strategy → overrides k_seeds, traversal_depth, min_edge_weight → logs RetrievalEvent → adds <code>event_id</code> to result.</p>
+</div>
+
+<div class="method-block glass">
+<div class="method-sig">submit_feedback(event_id: str, score: float) -&gt; None</div>
+<p class="method-desc">Updates strategy fitness for the event's strategy (score 0.0–1.0).</p>
+</div>
+
+<div class="method-block glass">
+<div class="method-sig">search_archive(query, user_id) -&gt; list</div>
+<p class="method-desc">Vector search on deprecated nodes only (manual deep recall).</p>
+</div>
+
+<div class="method-block glass">
+<div class="method-sig">set_user_preferences(user_id, prefs: Dict) / get_user_preferences(user_id)</div>
+<p class="method-desc">Defaults: pruning=True, consolidation=True, min_confidence from settings. <code>force_sleep</code> skips if both pruning and consolidation false.</p>
+</div>
+
+<div class="method-block glass">
+<div class="method-sig">force_sleep(user_id) / strategy_report(user_id=None) / graph_health(user_id)</div>
+<p class="method-desc"><code>graph_health</code> returns total_nodes, confidence_ratio, prune_ratio, status: empty | healthy | noisy.</p>
+</div>
+
+<div class="method-block glass">
+<div class="method-sig">process_batch(texts, user_id, global_deduplication=False)</div>
+<p class="method-desc">Alias for process_batch_fast; logs ActivityLog on writes when adaptive enabled.</p>
+</div>
+
+<div class="mermaid-wrap"><pre class="mermaid">flowchart TD
+  retrieve[retrieve] --> event[Log RetrievalEvent]
+  event --> feedback[submit_feedback]
+  scheduler[SleepScheduler] --> sleep[force_sleep]
+  sleep --> score[ImplicitScorer]
+  score --> evolve[StrategyRegistry.evolve]
+  sleep --> maint[Memory.maintenance]</pre></div>
+</section>
+
+<section id="maintenance-coherence" class="doc-block">
+<h2 class="section-title">Maintenance &amp; coherence <a href="#maintenance-coherence" class="anchor-link">#</a></h2>
+<h3 class="subsection-title">Memory.maintenance</h3>
+<p>Marks stale nodes deprecated; consolidation clusters entities with ≥5 nodes → LLM master belief (see implementation notes).</p>
+<h3 class="subsection-title">CoherenceDaemon.run_cycle</h3>
+<p>LLM conflict resolution, prune stale, strengthen high-evidence beliefs. Requires store support for contradiction/stale/strengthen queries (no-op on in-memory).</p>
+<h3 class="subsection-title">SleepConsolidator</h3>
+<p>Scores retrieval events, evolves strategies when ≥50 events, runs maintenance.</p>
+</section>
+
+<section id="internals" class="doc-block">
+<h2 class="section-title">Internal components <a href="#internals" class="anchor-link">#</a></h2>
+<h3 class="subsection-title">SurpriseFilter.evaluate(text, user_id)</h3>
+<p>novelty_score = 1 - max_sim; novel if ≥ BASE_NOVELTY_THRESHOLD; confirmation_targets in [CONFIRMATION_RANGE_START, END].</p>
+<h3 class="subsection-title">AbstractionEngine</h3>
+<p><code>extract(text, retries=2)</code>, <code>batch_extract(texts, retries=2)</code> → AbstractionResult JSON via LLM provider.</p>
+<h3 class="subsection-title">Embedder</h3>
+<p>SentenceTransformers when groq/ollama or no OpenAI key; OpenAI if key + model name contains text-embedding; else deterministic mock vectors.</p>
+<h3 class="subsection-title">StrategyRegistry</h3>
+<p><code>select_strategy(user_id)</code>, <code>update_fitness</code>, <code>evolve(user_id)</code> with mutation on k_seeds, depth, min_edge_weight.</p>
+<h3 class="subsection-title">ImplicitScorer</h3>
+<p>Heuristic scoring; <code>judge_with_llm</code> is a stub (JUDGE_LLM_MODEL reserved).</p>
+</section>
+
+<section id="graph-store" class="doc-block">
+<h2 class="section-title">GraphStore interface <a href="#graph-store" class="anchor-link">#</a></h2>
+<p>ABC: <code>neuron.graph.store_interface.GraphStore</code></p>
+<ul class="field-list">
+<li><code>setup()</code>, <code>add_node</code>, <code>add_nodes_batch</code>, <code>get_node</code>, <code>get_nodes_batch</code></li>
+<li><code>search_nearest_nodes(embedding, user_id, k=5)</code>, <code>search_deprecated_nodes</code></li>
+<li><code>add_edge</code>, <code>add_edges_batch</code>, <code>get_edges</code>, <code>get_edges_batch</code>, <code>update_edge</code>, <code>update_edges_batch</code></li>
+<li><code>update_node</code>, <code>list_nodes</code>, <code>get_nodes_by_entity</code></li>
+<li>Adaptive: <code>log_activity</code>, <code>log_retrieval_event</code>, <code>add_strategy</code>, <code>get_strategies</code>, <code>update_strategy</code>, <code>get_users_needing_maintenance</code>, <code>get_retrieval_events</code>, <code>get_retrieval_event</code></li>
+<li>Maintenance: <code>get_stale_nodes</code>, <code>get_contradiction_pairs</code>, <code>get_nodes_for_strengthening</code></li>
+<li>Optional: <code>traverse_graph(start_node_ids, depth, user_id)</code> — Neo4j native; Postgres uses Python BFS</li>
+</ul>
+<table class="param-table compare-table"><thead><tr><th>Feature</th><th>Postgres</th><th>Neo4j</th><th>In-memory</th></tr></thead><tbody>
+<tr><td>Persistence</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">No</td></tr>
+<tr><td>pgvector / HNSW</td><td class="yes">Yes</td><td class="partial">Vector index</td><td class="yes">Yes</td></tr>
+<tr><td>traverse_graph</td><td class="partial">BFS fallback</td><td class="yes">Native</td><td class="partial">BFS</td></tr>
+<tr><td>Coherence queries</td><td class="yes">Yes</td><td class="yes">Yes</td><td class="no">Stubs empty</td></tr>
+</tbody></table>
+</section>
+
+<section id="http-api" class="doc-block">
+<h2 class="section-title">HTTP API <a href="#http-api" class="anchor-link">#</a></h2>
+<div class="callout callout-warning"><div class="callout-title">Base Memory only</div><p>FastAPI app uses <code>Memory()</code>, not AdaptiveMemory — no <code>event_id</code> or feedback endpoints.</p></div>
+<table class="param-table"><thead><tr><th>Method</th><th>Path</th><th>Body</th><th>Response</th></tr></thead><tbody>
+<tr><td>POST</td><td><code>/v1/memory/process</code></td><td><code>{text, user_id}</code></td><td><code>{status, node}</code></td></tr>
+<tr><td>POST</td><td><code>/v1/memory/retrieve</code></td><td><code>{query, user_id}</code></td><td><code>{status, context}</code></td></tr>
+<tr><td>POST</td><td><code>/v1/memory/consolidate/{user_id}</code></td><td>—</td><td>CoherenceDaemon.run_cycle</td></tr>
+<tr><td>GET</td><td><code>/health</code></td><td>—</td><td><code>{status: healthy}</code></td></tr>
+</tbody></table>
+<div class="code-example"><div class="code-header"><span>curl</span></div><pre><code class="language-bash">curl -X POST http://localhost:8000/v1/memory/process \
+  -H "Content-Type: application/json" \
+  -d "{\"text\": \"Hello\", \"user_id\": \"u1\"}"</code></pre></div>
+</section>
+
+<section id="typescript-sdk" class="doc-block">
+<h2 class="section-title">TypeScript SDK <a href="#typescript-sdk" class="anchor-link">#</a></h2>
+<p><code>neuron/sdk-ts/memory.ts</code></p>
+<div class="code-example"><div class="code-header"><span>typescript</span></div><pre><code class="language-typescript">import { Memory } from './memory';
+const mem = new Memory('user_1', 'http://localhost:8000');
+await mem.process('Fact');
+await mem.retrieve('query');
+await mem.consolidate();</code></pre></div>
+<table class="param-table"><thead><tr><th>Method</th><th>Args</th><th>Returns</th></tr></thead><tbody>
+<tr><td><code>constructor</code></td><td>userId, baseUrl='http://localhost:8000'</td><td>Memory</td></tr>
+<tr><td><code>process(text)</code></td><td>string</td><td>Promise&lt;Node | null&gt;</td></tr>
+<tr><td><code>retrieve(query)</code></td><td>string</td><td>Promise&lt;RetrievalContext&gt;</td></tr>
+<tr><td><code>consolidate()</code></td><td>—</td><td>Promise&lt;void&gt;</td></tr>
+</tbody></table>
+</section>
+
+<section id="integrations" class="doc-block">
+<h2 class="section-title">Framework integrations <a href="#integrations" class="anchor-link">#</a></h2>
+<table class="param-table"><thead><tr><th>Module</th><th>Class</th><th>Key methods</th></tr></thead><tbody>
+<tr><td><code>integrations.langchain</code></td><td>NEURONMemory</td><td>load_memory_variables → retrieve; save_context → process</td></tr>
+<tr><td><code>integrations.langgraph</code></td><td>NEURONCheckpointer</td><td>get_tuple, put, list</td></tr>
+<tr><td><code>integrations.llamaindex</code></td><td>NEURONMemoryStore</td><td>get, put, reset, from_defaults(user_id)</td></tr>
+<tr><td><code>integrations.crewai</code></td><td>NEURONSharedMemory</td><td>save(task_output), search(query) → str</td></tr>
+</tbody></table>
+</section>
+
+<section id="cli-daemon" class="doc-block">
+<h2 class="section-title">CLI &amp; daemon <a href="#cli-daemon" class="anchor-link">#</a></h2>
+<p><code>neuron init</code> — writes .env.example with GROQ_API_KEY, LLM_PROVIDER, DATABASE_URL.</p>
+<p>Celery: <code>neuron.daemon.tasks</code>, broker <code>redis://{REDIS_HOST}:6379/0</code>, task <code>run_coherence_cycle(user_id)</code>.</p>
+</section>
+
+<section id="tuning-guide" class="doc-block">
+<h2 class="section-title">Tuning guide <a href="#tuning-guide" class="anchor-link">#</a></h2>
+<ul class="step-list">
+<li><strong>Cheaper ingest:</strong> process_batch_fast; raise deduplication_threshold; enable global_deduplication</li>
+<li><strong>Fewer new nodes:</strong> raise BASE_NOVELTY_THRESHOLD; widen confirmation band</li>
+<li><strong>Richer context:</strong> increase K_SEEDS, TRAVERSAL_DEPTH, MAX_CONTEXT_NODES</li>
+<li><strong>Stricter context:</strong> lower depth/seeds; raise MIN_EDGE_WEIGHT, MIN_CONFIDENCE</li>
+<li><strong>Adaptive:</strong> ENABLE_ADAPTIVE_MEMORY=true; ADAPTIVE_MODE=manual + force_sleep off-peak</li>
+<li><strong>Custom extraction:</strong> override ABSTRACTION_PROMPT or subclass AbstractionEngine</li>
+</ul>
+</section>
+
+<section id="testing" class="doc-block">
+<h2 class="section-title">Testing <a href="#testing" class="anchor-link">#</a></h2>
+<div class="code-example"><div class="code-header"><span>bash</span></div><pre><code class="language-bash">pip install -e .
+pytest tests/ -q
+python tests/batch_fast_test.py
+python tests/adaptive_test.py</code></pre></div>
+</section>
+
+<section id="implementation-notes" class="doc-block">
+<h2 class="section-title">Implementation notes <a href="#implementation-notes" class="anchor-link">#</a></h2>
+<ul class="step-list">
+<li>HTTP API does not expose adaptive feedback or event_id.</li>
+<li>In-memory store returns empty for coherence maintenance queries.</li>
+<li>Postgres unreachable with GRAPH_STORE_TYPE=postgres falls back to in-memory with a warning.</li>
+</ul>
+</section>
+
+<footer class="main-footer"><p>neuron v1.0.0 — MIT. Documentation generated from codebase.</p></footer>
+</main>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

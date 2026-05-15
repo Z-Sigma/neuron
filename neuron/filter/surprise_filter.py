@@ -11,11 +11,12 @@ class SurpriseFilter:
         self.embedder = embedder
         self.threshold = settings.base_novelty_threshold
 
-    def evaluate(self, text: str, user_id: str) -> SurpriseResult:
+    def evaluate(self, text: str, user_id: str, threshold: Optional[float] = None) -> SurpriseResult:
         # 1. Embed incoming text
         embedding = self.embedder.embed(text)
         
-        # 2. Query for K nearest existing nodes
+        # Use provided threshold or fallback to global settings
+        current_threshold = threshold if threshold is not None else self.threshold
         nearest_nodes = self.store.search_nearest_nodes(embedding, user_id, k=settings.k_seeds)
         
         if not nearest_nodes:
@@ -37,7 +38,7 @@ class SurpriseFilter:
         novelty_score = 1.0 - max_sim
 
         # 4. Decision logic
-        is_novel = novelty_score >= self.threshold
+        is_novel = novelty_score >= current_threshold
         
         confirmation_targets = []
         contradiction_candidates = []

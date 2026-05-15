@@ -26,6 +26,7 @@ class Settings(BaseSettings):
         "confidence": 0.0-1.0,
         "domain_tags": ["tag1", "tag2"],
         "entities": ["Entity1", "Entity2"],
+        "contradiction_candidates": ["Specific existing belief labels that this information contradicts"],
         "abstraction_level": "specific", "pattern", or "principle",
         "temporal_stability": "stable", "volatile", or "time-bound"
     }
@@ -42,6 +43,7 @@ class Settings(BaseSettings):
             "confidence": 0.0-1.0,
             "domain_tags": ["tag1", "tag2"],
             "entities": ["Entity1", "Entity2"],
+            "contradiction_candidates": ["Existing belief labels that this chunk contradicts"],
             "abstraction_level": "specific", "pattern", or "principle",
             "temporal_stability": "stable", "volatile", or "time-bound"
         },

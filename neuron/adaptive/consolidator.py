@@ -43,7 +43,8 @@ class SleepConsolidator:
         logger.info(f"Found {len(high_score_events)} high-score events for myelination.")
 
         # 4. Trigger Strategy Evolution if we have enough data
-        if len(events) >= 50:
+        from neuron.config import settings
+        if len(events) >= settings.min_events_before_evolution:
             self.registry.evolve(user_id)
 
         # 4. Standard Maintenance (Pruning & Consolidation)
@@ -56,5 +57,5 @@ class SleepConsolidator:
         self.store.log_activity(ActivityLog(
             user_id=user_id,
             activity_type=ActivityType.MAINTENANCE,
-            details=f"Completed SleepConsolidator cycle. Evolved={len(events) >= 50}"
+            details=f"Completed SleepConsolidator cycle. Evolved={len(events) >= settings.min_events_before_evolution}"
         ))

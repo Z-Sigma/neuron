@@ -25,7 +25,7 @@ class StrategyRegistry:
         strategies = [s for s in self.store.get_strategies(user_id) if s.user_id == user_id]
         
         if not strategies:
-            return RetrievalStrategy(id="default", user_id=user_id, k_seeds=5, traversal_depth=3)
+            return RetrievalStrategy(id="default", user_id=user_id, k_seeds=5, traversal_depth=3, novelty_threshold=0.8)
 
         if random.random() < self.exploration_rate:
             return random.choice(strategies)
@@ -47,7 +47,7 @@ class StrategyRegistry:
                 child = template.model_copy(update={
                     "id": f"u_{user_id[:6]}_{template.id}",
                     "user_id": user_id,
-                    "fitness_score": 0.0,
+                    "fitness_score": 0.5,
                     "generations_survived": 0
                 })
                 self.store.add_strategy(child)
@@ -82,6 +82,7 @@ class StrategyRegistry:
                 k_seeds=max(1, best.k_seeds + random.randint(-1, 1)),
                 traversal_depth=max(1, best.traversal_depth + random.randint(-1, 1)),
                 min_edge_weight=max(0.1, min(1.0, best.min_edge_weight + random.uniform(-0.1, 0.1))),
+                novelty_threshold=max(0.1, min(1.0, best.novelty_threshold + random.uniform(-0.1, 0.1))),
                 parent_id=best.id,
                 generations_survived=0
             )
@@ -89,4 +90,8 @@ class StrategyRegistry:
             best.generations_survived += 1
             self.store.update_strategy(best)
             self.store.add_strategy(child)
-            # In a real system, we'd delete 'worst' or limit population size
+            
+            # Prune population if it exceeds the limit
+            if len(strategies) >= self.population_size:
+                logger.info(f"Pruning population for {user_id}: Removing least-fit strategy {worst.id}")
+                self.store.delete_strategy(worst.id)

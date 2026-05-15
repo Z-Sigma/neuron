@@ -82,19 +82,52 @@ class AbstractionEngine:
 
     def _normalize_fields(self, data: dict) -> dict:
         """Normalize LLM output to match Pydantic Literal constraints."""
-        stability_map = {"constant": "stable", "permanent": "stable", "temporary": "time-bound"}
-        level_map = {}
+        # 1. Temporal Stability
+        stability_options = ["stable", "volatile", "time-bound"]
+        stability_map = {
+            "constant": "stable", "permanent": "stable", 
+            "temporary": "time-bound", "dynamic": "volatile"
+        }
         
         if "temporal_stability" in data:
-            val = data["temporal_stability"].lower().strip()
+            val = str(data["temporal_stability"]).lower().strip()
             data["temporal_stability"] = stability_map.get(val, val)
+            if data["temporal_stability"] not in stability_options:
+                data["temporal_stability"] = "stable" # Default safe fallback
+        else:
+            data["temporal_stability"] = "stable"
         
+        # 2. Abstraction Level
+        level_options = ["specific", "pattern", "principle"]
         if "abstraction_level" in data:
-            data["abstraction_level"] = data["abstraction_level"].lower().strip()
+            val = str(data["abstraction_level"]).lower().strip()
+            if val not in level_options:
+                # Attempt fuzzy match
+                if "spec" in val: data["abstraction_level"] = "specific"
+                elif "patt" in val: data["abstraction_level"] = "pattern"
+                elif "princ" in val: data["abstraction_level"] = "principle"
+                else: data["abstraction_level"] = "specific"
+            else:
+                data["abstraction_level"] = val
+        else:
+            data["abstraction_level"] = "specific"
         
-        # Ensure entities is always a list
-        if "entities" not in data:
-            data["entities"] = []
+        # 3. List fields (Robust string-to-list conversion)
+        for field in ["entities", "domain_tags", "contradiction_candidates", "related_concepts"]:
+            val = data.get(field, [])
+            if isinstance(val, str):
+                # Split by comma or semicolon and clean up
+                import re
+                data[field] = [s.strip() for s in re.split(r'[,;]', val) if s.strip()]
+            elif not isinstance(val, list):
+                data[field] = []
+        
+        # 4. Confidence Clamping
+        try:
+            conf = float(data.get("confidence", 0.5))
+            data["confidence"] = max(0.0, min(1.0, conf))
+        except (ValueError, TypeError):
+            data["confidence"] = 0.5
         
         return data
 
