@@ -72,3 +72,14 @@ blueprint.js
 .gemini/
 test_out.txt
 *.log
+
+# LaTeX
+white_paper.tex
+*.aux
+*.log
+*.pdf
+*.toc
+*.out
+*.fdb_latexmk
+*.fls
+*.synctex.gz
