@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body { margin: 0; background: transparent; font-family: var(--font-sans, sans-serif); }
+.wrap { padding: 12px 0; }
+svg text { font-family: var(--font-sans, sans-serif); }
+</style>
+</head>
+<body>
+<div class="wrap">
+<svg width="100%" viewBox="0 0 680 1860" role="img">
+<title>Neuron cognitive memory graph — full pipeline flowchart v2</title>
+<desc>Five-stage flowchart including deep recall fallback in the retrieval pipeline.</desc>
+<defs>
+  <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<!-- ── SECTION BANDS ─────────────────────────────────────── -->
+<rect x="12" y="12" width="656" height="398" rx="10" fill="none" stroke="#378ADD" stroke-width="1" stroke-dasharray="6 4" opacity="0.5"/>
+<text x="26" y="30" class="ts" style="font-size:11px;fill:#378ADD;font-weight:500">1 · Ingestion pipelines</text>
+
+<rect x="12" y="424" width="656" height="188" rx="10" fill="none" stroke="#639922" stroke-width="1" stroke-dasharray="6 4" opacity="0.5"/>
+<text x="26" y="442" class="ts" style="font-size:11px;fill:#639922;font-weight:500">2 · Global deduplication &amp; evidence</text>
+
+<rect x="12" y="626" width="656" height="122" rx="10" fill="none" stroke="#1D9E75" stroke-width="1" stroke-dasharray="6 4" opacity="0.5"/>
+<text x="26" y="644" class="ts" style="font-size:11px;fill:#1D9E75;font-weight:500">3 · Storage layer</text>
+
+<rect x="12" y="762" width="656" height="400" rx="10" fill="none" stroke="#7F77DD" stroke-width="1" stroke-dasharray="6 4" opacity="0.5"/>
+<text x="26" y="780" class="ts" style="font-size:11px;fill:#7F77DD;font-weight:500">4 · Retrieval pipeline</text>
+
+<rect x="12" y="1176" width="656" height="660" rx="10" fill="none" stroke="#BA7517" stroke-width="1" stroke-dasharray="6 4" opacity="0.5"/>
+<text x="26" y="1194" class="ts" style="font-size:11px;fill:#BA7517;font-weight:500">5 · Adaptive &amp; maintenance loop</text>
+
+<!-- ════════════════════════════════════════════════
+     SECTION 1 — INGESTION
+     ════════════════════════════════════════════════ -->
+
+<!-- User Input -->
+<g class="c-gray">
+  <rect x="230" y="44" width="220" height="40" rx="8" stroke-width="0.5"/>
+  <text x="340" y="64" text-anchor="middle" dominant-baseline="central" class="th">User input / text chunks</text>
+</g>
+
+<text x="90" y="116" text-anchor="middle" class="ts" style="fill:var(--color-text-secondary)">Standard mode</text>
+<text x="506" y="116" text-anchor="middle" class="ts" style="fill:var(--color-text-secondary)">Batch modes (fast / deep)</text>
+
+<!-- Surprise Filter -->
+<g class="c-blue">
+  <rect x="36" y="124" width="158" height="40" rx="8" stroke-width="0.5"/>
+  <text x="115" y="144" text-anchor="middle" dominant-baseline="central" class="th">Surprise filter</text>
+</g>
+
+<!-- Evidence Increment -->
+<g class="c-teal">
+  <rect x="36" y="232" width="158" height="40" rx="8" stroke-width="0.5"/>
+  <text x="115" y="252" text-anchor="middle" dominant-baseline="central" class="th">Evidence increment</text>
+</g>
+
+<!-- Abstraction Engine -->
+<g class="c-purple">
+  <rect x="36" y="320" width="158" height="40" rx="8" stroke-width="0.5"/>
+  <text x="115" y="340" text-anchor="middle" dominant-baseline="central" class="th">Abstraction engine</text>
+</g>
+
+<!-- Batch Embedder -->
+<g class="c-blue">
+  <rect x="412" y="124" width="192" height="40" rx="8" stroke-width="0.5"/>
+  <text x="508" y="144" text-anchor="middle" dominant-baseline="central" class="th">Batch embedder</text>
+</g>
+
+<!-- Intra-Batch Dedupe -->
+<g class="c-blue">
+  <rect x="412" y="212" width="192" height="40" rx="8" stroke-width="0.5"/>
+  <text x="508" y="232" text-anchor="middle" dominant-baseline="central" class="th">Intra-batch dedupe</text>
+</g>
+
+<!-- Global Dedupe diamond -->
+<polygon points="508,282 570,318 508,354 446,318" fill="none" stroke="var(--color-border-primary)" stroke-width="1"/>
+<text x="508" y="318" text-anchor="middle" dominant-baseline="central" class="ts">Global dedupe?</text>
+
+<!-- Entity Hub Linking -->
+<g class="c-amber">
+  <rect x="412" y="374" width="192" height="40" rx="8" stroke-width="0.5"/>
+  <text x="508" y="394" text-anchor="middle" dominant-baseline="central" class="th">Entity hub linking</text>
+</g>
+
+<!-- arrows s1 -->
+<path d="M340 84 L340 100 L115 100 L115 124" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<path d="M340 84 L340 100 L508 100 L508 124" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<line x1="115" y1="164" x2="115" y2="232" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<text x="122" y="202" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">matched ≥0.75</text>
+<line x1="115" y1="272" x2="115" y2="320" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<text x="122" y="302" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">novel &lt;0.70</text>
+<line x1="508" y1="164" x2="508" y2="212" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<line x1="508" y1="252" x2="508" y2="282" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<line x1="508" y1="354" x2="508" y2="374" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<text x="514" y="368" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">deep only</text>
+
+<!-- ════════════════════════════════════════════════
+     SECTION 2 — GLOBAL LOGIC
+     ════════════════════════════════════════════════ -->
+
+<g class="c-blue">
+  <rect x="36" y="456" width="180" height="40" rx="8" stroke-width="0.5"/>
+  <text x="126" y="476" text-anchor="middle" dominant-baseline="central" class="th">Search store for match</text>
+</g>
+
+<g class="c-teal">
+  <rect x="36" y="556" width="180" height="40" rx="8" stroke-width="0.5"/>
+  <text x="126" y="566" text-anchor="middle" dominant-baseline="central" class="ts">Evidence increment</text>
+  <text x="126" y="580" text-anchor="middle" dominant-baseline="central" class="ts">+ entity merge</text>
+</g>
+
+<g class="c-purple">
+  <rect x="250" y="456" width="180" height="40" rx="8" stroke-width="0.5"/>
+  <text x="340" y="476" text-anchor="middle" dominant-baseline="central" class="th">LLM metadata extract</text>
+</g>
+
+<g class="c-purple">
+  <rect x="464" y="456" width="172" height="40" rx="8" stroke-width="0.5"/>
+  <text x="550" y="466" text-anchor="middle" dominant-baseline="central" class="ts">Create new nodes</text>
+  <text x="550" y="480" text-anchor="middle" dominant-baseline="central" class="ts">(fast batch)</text>
+</g>
+
+<!-- arrows s2 -->
+<path d="M446 318 L36 318 L36 456" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<text x="100" y="312" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">yes (dup found)</text>
+<path d="M570 318 L644 318 L644 456" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<text x="580" y="312" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">no</text>
+<line x1="126" y1="496" x2="126" y2="556" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<text x="132" y="528" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">found</text>
+<path d="M216 476 L250 476" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<text x="225" y="470" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">unique</text>
+<path d="M115 360 L115 430 L340 430 L340 456" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)" stroke-dasharray="4 3"/>
+
+<!-- ════════════════════════════════════════════════
+     SECTION 3 — STORAGE
+     ════════════════════════════════════════════════ -->
+
+<ellipse cx="340" cy="670" rx="90" ry="18" fill="none" stroke="#1D9E75" stroke-width="1.5"/>
+<rect x="250" y="656" width="180" height="44" fill="none" stroke="#1D9E75" stroke-width="1.5"/>
+<ellipse cx="340" cy="700" rx="90" ry="18" fill="none" stroke="#1D9E75" stroke-width="1.5"/>
+<text x="340" y="681" text-anchor="middle" dominant-baseline="central" class="th" style="fill:#1D9E75">Knowledge graph</text>
+
+<g class="c-teal">
+  <rect x="126" y="718" width="148" height="36" rx="8" stroke-width="0.5"/>
+  <text x="200" y="736" text-anchor="middle" dominant-baseline="central" class="ts">Nodes: beliefs / facts</text>
+</g>
+<g class="c-teal">
+  <rect x="406" y="718" width="148" height="36" rx="8" stroke-width="0.5"/>
+  <text x="480" y="736" text-anchor="middle" dominant-baseline="central" class="ts">Edges: semantic links</text>
+</g>
+
+<!-- arrows into storage -->
+<path d="M126 596 L126 624 L250 624 L250 670" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<path d="M340 496 L340 638" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<path d="M550 496 L550 624 L430 624 L430 670" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<path d="M508 414 L508 440 L640 440 L640 624 L430 624" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)" stroke-dasharray="4 3"/>
+<path d="M295 710 L200 718" fill="none" stroke="#1D9E75" stroke-width="1" marker-end="url(#arr)"/>
+<path d="M385 710 L480 718" fill="none" stroke="#1D9E75" stroke-width="1" marker-end="url(#arr)"/>
+
+<!-- ════════════════════════════════════════════════
+     SECTION 4 — RETRIEVAL (with Deep Recall)
+     ════════════════════════════════════════════════ -->
+
+<!-- User Query -->
+<g class="c-gray">
+  <rect x="230" y="792" width="220" height="40" rx="8" stroke-width="0.5"/>
+  <text x="340" y="812" text-anchor="middle" dominant-baseline="central" class="th">User query</text>
+</g>
+
+<!-- Strategy Registry -->
+<g class="c-amber">
+  <rect x="36" y="872" width="162" height="40" rx="8" stroke-width="0.5"/>
+  <text x="117" y="892" text-anchor="middle" dominant-baseline="central" class="th">Strategy registry</text>
+</g>
+
+<!-- Query Embedder -->
+<g class="c-blue">
+  <rect x="258" y="872" width="164" height="40" rx="8" stroke-width="0.5"/>
+  <text x="340" y="892" text-anchor="middle" dominant-baseline="central" class="th">Query embedder</text>
+</g>
+
+<!-- Deep Recall diamond -->
+<polygon points="340,942 406,978 340,1014 274,978" fill="none" stroke="var(--color-border-primary)" stroke-width="1"/>
+<text x="340" y="978" text-anchor="middle" dominant-baseline="central" class="ts">Deep recall?</text>
+
+<!-- Search Deprecated Nodes (Deep Recall = yes) -->
+<g class="c-coral">
+  <rect x="456" y="958" width="188" height="40" rx="8" stroke-width="0.5"/>
+  <text x="550" y="972" text-anchor="middle" dominant-baseline="central" class="ts">Search deprecated</text>
+  <text x="550" y="986" text-anchor="middle" dominant-baseline="central" class="ts">/ archived nodes</text>
+</g>
+
+<!-- Top-K seed search (Deep Recall = no → normal path) -->
+<g class="c-purple">
+  <rect x="258" y="1034" width="164" height="40" rx="8" stroke-width="0.5"/>
+  <text x="340" y="1054" text-anchor="middle" dominant-baseline="central" class="th">Top-K seed search</text>
+</g>
+
+<!-- Graph walk BFS -->
+<g class="c-purple">
+  <rect x="258" y="1102" width="164" height="44" rx="8" stroke-width="0.5"/>
+  <text x="340" y="1118" text-anchor="middle" dominant-baseline="central" class="ts">Graph walk</text>
+  <text x="340" y="1132" text-anchor="middle" dominant-baseline="central" class="ts">BFS (depth D=3, w≥0.6)</text>
+</g>
+
+<!-- Myelination -->
+<g class="c-teal">
+  <rect x="456" y="1102" width="188" height="44" rx="8" stroke-width="0.5"/>
+  <text x="550" y="1118" text-anchor="middle" dominant-baseline="central" class="ts">Myelination</text>
+  <text x="550" y="1132" text-anchor="middle" dominant-baseline="central" class="ts">edge weight × 1.05</text>
+</g>
+
+<!-- Context Assembly -->
+<g class="c-gray">
+  <rect x="258" y="1080" width="0" height="0"/>
+</g>
+<g class="c-gray">
+  <rect x="258" y="1076" width="0" height="0"/>
+</g>
+
+<!-- Context Assembly -->
+<g class="c-purple">
+  <rect x="258" y="1174" width="164" height="40" rx="8" stroke-width="0.5"/>
+  <text x="340" y="1194" text-anchor="middle" dominant-baseline="central" class="th">Context assembly</text>
+</g>
+
+<!-- Result to Agent -->
+<g class="c-green">
+  <rect x="258" y="1248" width="164" height="40" rx="8" stroke-width="0.5"/>
+  <text x="340" y="1268" text-anchor="middle" dominant-baseline="central" class="th">Result to agent</text>
+</g>
+
+<!-- arrows s4 -->
+<path d="M340 832 L340 852 L117 852 L117 872" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<line x1="340" y1="832" x2="340" y2="872" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<line x1="198" y1="892" x2="258" y2="892" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<text x="228" y="886" text-anchor="middle" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">ε-greedy</text>
+<line x1="340" y1="912" x2="340" y2="942" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+
+<!-- Deep Recall = yes → Deprecated search (right) -->
+<line x1="406" y1="978" x2="456" y2="978" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<text x="430" y="972" text-anchor="middle" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">yes</text>
+
+<!-- Deprecated search rejoins Top-K (merges into seed search) -->
+<path d="M550 998 L550 1020 L422 1020 L422 1054 L422 1054" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)" stroke-dasharray="4 3"/>
+
+<!-- Deep Recall = no → Top-K (down) -->
+<line x1="340" y1="1014" x2="340" y2="1034" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<text x="346" y="1028" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">no</text>
+
+<!-- Top-K → Graph Walk -->
+<line x1="340" y1="1074" x2="340" y2="1102" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+
+<!-- Graph Walk → Myelination -->
+<line x1="422" y1="1124" x2="456" y2="1124" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+
+<!-- Graph Walk → Context Assembly -->
+<line x1="340" y1="1146" x2="340" y2="1174" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+
+<!-- Context → Result -->
+<line x1="340" y1="1214" x2="340" y2="1248" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+
+<!-- ════════════════════════════════════════════════
+     SECTION 5 — ADAPTIVE & MAINTENANCE
+     ════════════════════════════════════════════════ -->
+
+<!-- Feedback -->
+<g class="c-amber">
+  <rect x="230" y="1316" width="220" height="40" rx="8" stroke-width="0.5"/>
+  <text x="340" y="1330" text-anchor="middle" dominant-baseline="central" class="ts">User feedback</text>
+  <text x="340" y="1346" text-anchor="middle" dominant-baseline="central" class="ts">/ implicit scoring</text>
+</g>
+
+<!-- Update Strategy Fitness -->
+<g class="c-amber">
+  <rect x="230" y="1392" width="220" height="40" rx="8" stroke-width="0.5"/>
+  <text x="340" y="1412" text-anchor="middle" dominant-baseline="central" class="th">Update strategy fitness</text>
+</g>
+
+<!-- Sleep Cycle diamond -->
+<polygon points="340,1462 406,1498 340,1534 274,1498" fill="none" stroke="var(--color-border-primary)" stroke-width="1"/>
+<text x="340" y="1492" text-anchor="middle" dominant-baseline="central" class="ts">Sleep cycle?</text>
+<text x="340" y="1508" text-anchor="middle" dominant-baseline="central" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">every 24 h</text>
+
+<!-- Maintenance tasks sub-band -->
+<rect x="36" y="1558" width="596" height="168" rx="8" fill="none" stroke="var(--color-border-tertiary)" stroke-width="0.8" stroke-dasharray="4 3" opacity="0.7"/>
+<text x="52" y="1574" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">Maintenance tasks</text>
+
+<!-- SleepConsolidator -->
+<g class="c-coral">
+  <rect x="246" y="1580" width="188" height="40" rx="8" stroke-width="0.5"/>
+  <text x="340" y="1600" text-anchor="middle" dominant-baseline="central" class="th">Sleep consolidator</text>
+</g>
+
+<!-- Pruning -->
+<g class="c-gray">
+  <rect x="56" y="1658" width="160" height="44" rx="8" stroke-width="0.5"/>
+  <text x="136" y="1674" text-anchor="middle" dominant-baseline="central" class="ts">Prune stale nodes</text>
+  <text x="136" y="1688" text-anchor="middle" dominant-baseline="central" class="ts">C &lt; 0.35, &gt; 30 days</text>
+</g>
+
+<!-- Coherence -->
+<g class="c-gray">
+  <rect x="260" y="1658" width="160" height="44" rx="8" stroke-width="0.5"/>
+  <text x="340" y="1680" text-anchor="middle" dominant-baseline="central" class="ts">Coherence resolution</text>
+</g>
+
+<!-- Consolidation -->
+<g class="c-teal">
+  <rect x="464" y="1658" width="160" height="44" rx="8" stroke-width="0.5"/>
+  <text x="544" y="1674" text-anchor="middle" dominant-baseline="central" class="ts">Cluster consolidation</text>
+  <text x="544" y="1688" text-anchor="middle" dominant-baseline="central" class="ts">→ master belief</text>
+</g>
+
+<!-- arrows s5 -->
+<line x1="340" y1="1288" x2="340" y2="1316" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<line x1="340" y1="1356" x2="340" y2="1392" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<line x1="340" y1="1432" x2="340" y2="1462" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+
+<!-- Sleep → SleepConsolidator (yes) -->
+<line x1="340" y1="1534" x2="340" y2="1580" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<text x="346" y="1562" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">yes</text>
+
+<!-- Sleep → Strategy Registry (no — genetic mutation, left then up) -->
+<path d="M274 1498 L36 1498 L36 892" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)" stroke-dasharray="5 3"/>
+<text x="44" y="1220" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">genetic</text>
+<text x="44" y="1232" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">mutation</text>
+<text x="50" y="1252" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">→ strategy</text>
+<text x="50" y="1264" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">registry</text>
+<text x="50" y="1492" class="ts" style="font-size:10px;fill:var(--color-text-secondary)">no</text>
+
+<!-- SleepConsolidator → tasks -->
+<path d="M340 1620 L340 1642 L136 1642 L136 1658" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<path d="M340 1620 L340 1658" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+<path d="M340 1620 L340 1642 L544 1642 L544 1658" fill="none" stroke="var(--color-border-primary)" stroke-width="1" marker-end="url(#arr)"/>
+
+<!-- Consolidation → Knowledge Graph (master belief feedback) -->
+<path d="M544 1702 L544 1750 L644 1750 L644 686 L430 686" fill="none" stroke="#1D9E75" stroke-width="1" marker-end="url(#arr)" stroke-dasharray="5 3"/>
+<text x="594" y="1744" class="ts" style="font-size:10px;fill:#1D9E75">master belief</text>
+
+</svg>
+</div>
+</body>
+</html>

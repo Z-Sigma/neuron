@@ -71,6 +71,7 @@ benchmarks/
 blueprint.js
 .gemini/
 test_out.txt
+neuron_cognitive_memory_graph.html
 *.log
 
 # LaTeX
