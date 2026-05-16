@@ -26,6 +26,11 @@ class Embedder:
                 except Exception as e:
                     logger.error(f"Local model load failed: {e}")
                     self.mode = "mock"
+                    self.dimension = settings.embedding_dimension
+                    if "text-embedding-3-small" in settings.embedding_model_name:
+                        self.dimension = 1536
+                    elif "text-embedding-3-large" in settings.embedding_model_name:
+                        self.dimension = 3072
         elif api_key and api_key != "dummy":
             self.client = openai.OpenAI(api_key=api_key)
             self.model = settings.embedding_model_name if "text-embedding" in settings.embedding_model_name else "text-embedding-3-small"

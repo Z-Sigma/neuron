@@ -1,6 +1,7 @@
 import logging
 from typing import List, Optional, Dict, Tuple
 from uuid import UUID
+from collections import deque
 import numpy as np
 from neuron.models import Node, Edge, ActivityLog, RetrievalEvent, RetrievalStrategy
 from neuron.graph.store_interface import GraphStore
