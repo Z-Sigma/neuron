@@ -9,6 +9,20 @@ from neuron.graph.store_interface import GraphStore
 
 logger = logging.getLogger(__name__)
 
+
+def _neo4j_props(data: dict) -> dict:
+    """Serialize Pydantic model fields for the Neo4j driver."""
+    out = {}
+    for key, value in data.items():
+        if isinstance(value, UUID):
+            out[key] = str(value)
+        elif isinstance(value, datetime):
+            out[key] = value.isoformat()
+        else:
+            out[key] = value
+    return out
+
+
 class Neo4jGraphStore(GraphStore):
     def __init__(self, uri: str = settings.neo4j_uri, user: str = settings.neo4j_user, password: str = settings.neo4j_password):
         self.driver = GraphDatabase.driver(uri, auth=(user, password))
@@ -36,12 +50,34 @@ class Neo4jGraphStore(GraphStore):
             session.run("CREATE INDEX IF NOT EXISTS FOR (n:Belief) ON (n.user_id)")
             session.run("CREATE INDEX IF NOT EXISTS FOR (n:Belief) ON (n.deprecated)")
             try:
-                session.run(f"CREATE VECTOR INDEX belief_embeddings IF NOT EXISTS FOR (n:Belief) ON (n.embedding) OPTIONS {{indexConfig: {{ `vector.dimensions`: {settings.embedding_dimension}, `vector.similarity_function`: 'cosine' }}}}")
-            except: pass
+                session.run(
+                    "CREATE VECTOR INDEX belief_embeddings IF NOT EXISTS "
+                    "FOR (n:Belief) ON (n.embedding) "
+                    "OPTIONS {indexConfig: {"
+                    f"`vector.dimensions`: {settings.embedding_dimension}, "
+                    "`vector.similarity_function`: 'cosine'"
+                    "}}"
+                )
+            except Exception as exc:
+                logger.debug("Vector index setup skipped: %s", exc)
+            self._ensure_default_strategy()
+
+    def _ensure_default_strategy(self) -> None:
+        if not any(s.id == "default_v1" for s in self.get_strategies()):
+            default = RetrievalStrategy(
+                id="default_v1",
+                user_id="system",
+                k_seeds=settings.k_seeds,
+                traversal_depth=settings.traversal_depth,
+                min_edge_weight=settings.min_edge_weight,
+                novelty_threshold=0.8,
+            )
+            self.add_strategy(default)
 
     def add_node(self, node: Node) -> Node:
         with self.driver.session() as session:
-            session.run("MERGE (n:Belief {id: $id}) SET n += $props, n.created_at = datetime($created_at), n.last_confirmed_at = datetime($last_confirmed_at)", id=str(node.id), props=node.model_dump(exclude={'id', 'created_at', 'last_confirmed_at'}), created_at=node.created_at.isoformat(), last_confirmed_at=node.last_confirmed_at.isoformat())
+            props = _neo4j_props(node.model_dump(exclude={'id', 'created_at', 'last_confirmed_at'}))
+            session.run("MERGE (n:Belief {id: $id}) SET n += $props, n.created_at = datetime($created_at), n.last_confirmed_at = datetime($last_confirmed_at)", id=str(node.id), props=props, created_at=node.created_at.isoformat(), last_confirmed_at=node.last_confirmed_at.isoformat())
             return node
 
     def add_nodes_batch(self, nodes: List[Node]) -> None:
@@ -54,18 +90,36 @@ class Neo4jGraphStore(GraphStore):
             session.run("UNWIND $nodes as n_data MERGE (n:Belief {id: n_data.id}) SET n += n_data, n.created_at = datetime(n_data.created_at), n.last_confirmed_at = datetime(n_data.last_confirmed_at)", nodes=processed)
 
     def search_nearest_nodes(self, embedding: List[float], user_id: str, k: int = 5) -> List[Node]:
-        with self.driver.session() as session:
-            res = session.run("CALL db.index.vector.queryNodes('belief_embeddings', $k, $emb) YIELD node WHERE node.user_id = $uid AND node.deprecated = FALSE RETURN node", k=k, emb=embedding, uid=user_id)
-            return [self._row_to_node(record['node']) for record in res]
+        return self._vector_search(embedding, user_id, k, deprecated=False)
 
     def search_deprecated_nodes(self, embedding: List[float], user_id: str, k: int = 5) -> List[Node]:
+        return self._vector_search(embedding, user_id, k, deprecated=True)
+
+    def _vector_search(
+        self, embedding: List[float], user_id: str, k: int, deprecated: bool
+    ) -> List[Node]:
+        """Per-user vector search (scoped like Postgres), not global top-k + filter."""
         with self.driver.session() as session:
-            res = session.run("CALL db.index.vector.queryNodes('belief_embeddings', $k, $emb) YIELD node WHERE node.user_id = $uid AND node.deprecated = TRUE RETURN node", k=k, emb=embedding, uid=user_id)
-            return [self._row_to_node(record['node']) for record in res]
+            res = session.run(
+                """
+                MATCH (n:Belief)
+                WHERE n.user_id = $uid AND n.deprecated = $deprecated AND n.embedding IS NOT NULL
+                WITH n, vector.similarity.cosine(n.embedding, $emb) AS score
+                ORDER BY score DESC
+                LIMIT $k
+                RETURN n
+                """,
+                uid=user_id,
+                deprecated=deprecated,
+                emb=embedding,
+                k=k,
+            )
+            return [self._row_to_node(record["n"]) for record in res]
 
     def add_edge(self, edge: Edge) -> Edge:
         with self.driver.session() as session:
-            session.run("MATCH (a:Belief {id: $fid}), (b:Belief {id: $tid}) MERGE (a)-[r:ASSOCIATION {relation: $rel}]->(b) SET r += $props", fid=str(edge.from_node_id), tid=str(edge.to_node_id), rel=edge.relation, props=edge.model_dump(exclude={'from_node_id', 'to_node_id', 'relation'}))
+            props = _neo4j_props(edge.model_dump(exclude={'from_node_id', 'to_node_id', 'relation'}))
+            session.run("MATCH (a:Belief {id: $fid}), (b:Belief {id: $tid}) MERGE (a)-[r:ASSOCIATION {relation: $rel}]->(b) SET r += $props", fid=str(edge.from_node_id), tid=str(edge.to_node_id), rel=edge.relation, props=props)
             return edge
 
     def add_edges_batch(self, edges: List[Edge]) -> None:
@@ -101,7 +155,8 @@ class Neo4jGraphStore(GraphStore):
 
     def update_node(self, node: Node) -> Node:
         with self.driver.session() as session:
-            session.run("MATCH (n:Belief {id: $id}) SET n += $props", id=str(node.id), props=node.model_dump(exclude={'id', 'created_at'}))
+            props = _neo4j_props(node.model_dump(exclude={'id', 'created_at'}))
+            session.run("MATCH (n:Belief {id: $id}) SET n += $props", id=str(node.id), props=props)
             return node
 
     def update_edge(self, edge: Edge) -> Edge:
@@ -114,14 +169,56 @@ class Neo4jGraphStore(GraphStore):
         return edges
 
     def traverse_graph(self, start_node_ids: List[UUID], depth: int, user_id: str) -> Tuple[List[Node], List[Edge]]:
-        with self.driver.session() as session:
-            res = session.run("MATCH (s:Belief) WHERE s.id IN $ids CALL apoc.path.subgraphAll(s, {maxLevel: $d, relationshipFilter: 'ASSOCIATION', labelFilter: '+Belief'}) YIELD nodes, relationships RETURN nodes, relationships", ids=[str(nid) for nid in start_node_ids], d=depth).single()
-            if not res: return [], []
-            nodes = [self._row_to_node(n) for n in res['nodes'] if n['user_id'] == user_id and not n.get('deprecated')]
-            edges = [self._row_to_edge(r) for r in res['relationships']]
-            return nodes, edges
+        try:
+            with self.driver.session() as session:
+                res = session.run(
+                    "MATCH (s:Belief) WHERE s.id IN $ids "
+                    "CALL apoc.path.subgraphAll(s, {maxLevel: $d, relationshipFilter: 'ASSOCIATION', labelFilter: '+Belief'}) "
+                    "YIELD nodes, relationships RETURN nodes, relationships",
+                    ids=[str(nid) for nid in start_node_ids],
+                    d=depth,
+                ).single()
+                if not res:
+                    return [], []
+                nodes = [
+                    self._row_to_node(n) for n in res['nodes']
+                    if n.get('user_id') == user_id and not n.get('deprecated')
+                ]
+                edges = [self._row_to_edge(r) for r in res['relationships']]
+                return nodes, edges
+        except Exception as exc:
+            logger.debug("APOC traversal unavailable, using BFS fallback: %s", exc)
+            return self._traverse_bfs(start_node_ids, depth, user_id)
 
-    def log_activity(self, activity: ActivityLog) -> None: pass
+    def _traverse_bfs(self, start_node_ids: List[UUID], depth: int, user_id: str) -> Tuple[List[Node], List[Edge]]:
+        from collections import deque
+        visited_nodes: Dict[UUID, Node] = {}
+        visited_edges: Dict[UUID, Edge] = {}
+        queue = deque([(nid, 0) for nid in start_node_ids])
+        while queue:
+            curr_id, curr_depth = queue.popleft()
+            if curr_id in visited_nodes or curr_depth > depth:
+                continue
+            node = self.get_node(curr_id)
+            if not node or node.user_id != user_id or node.deprecated:
+                continue
+            visited_nodes[curr_id] = node
+            if curr_depth < depth:
+                for edge in self.get_edges(curr_id):
+                    visited_edges[edge.id] = edge
+                    next_id = edge.to_node_id if edge.from_node_id == curr_id else edge.from_node_id
+                    queue.append((next_id, curr_depth + 1))
+        return list(visited_nodes.values()), list(visited_edges.values())
+
+    def log_activity(self, activity: ActivityLog) -> None:
+        with self.driver.session() as session:
+            session.run(
+                "CREATE (a:ActivityLog {id: $id, user_id: $uid, activity_type: $type, details: $details, created_at: datetime()})",
+                id=str(activity.id),
+                uid=activity.user_id,
+                type=activity.activity_type.value,
+                details=activity.details,
+            )
     def log_retrieval_event(self, event: RetrievalEvent) -> None:
         with self.driver.session() as session:
             session.run("CREATE (e:RetrievalEvent {id: $id, user_id: $uid, query: $q, nodes_found: $nf, score: $s, created_at: datetime()}) WITH e MATCH (s:RetrievalStrategy {id: $sid}) MERGE (e)-[:USED_STRATEGY]->(s)", id=str(event.id), uid=event.user_id, q=event.query, nf=event.nodes_found, s=event.score, sid=event.strategy_id)
@@ -134,6 +231,7 @@ class Neo4jGraphStore(GraphStore):
         with self.driver.session() as session:
             q = "MATCH (s:RetrievalStrategy) "
             if user_id: q += "WHERE s.user_id = $uid OR s.user_id = 'system' "
+            q += "RETURN s"
             res = session.run(q, uid=user_id)
             return [RetrievalStrategy(**dict(record['s'])) for record in res]
 
@@ -144,19 +242,60 @@ class Neo4jGraphStore(GraphStore):
     def get_users_needing_maintenance(self, window_hours: int = 24) -> List[str]:
         with self.driver.session() as session:
             res = session.run("""
+                MATCH (a:ActivityLog)
+                WHERE a.created_at > datetime() - duration({hours: $h})
+                RETURN DISTINCT a.user_id AS uid
+            """, h=window_hours)
+            users = [record['uid'] for record in res]
+            if users:
+                return users
+            res = session.run("""
                 MATCH (n:Belief)
                 WHERE n.created_at > datetime() - duration({hours: $h})
-                RETURN DISTINCT n.user_id as uid
+                RETURN DISTINCT n.user_id AS uid
             """, h=window_hours)
             return [record['uid'] for record in res]
 
     def get_stale_nodes(self, user_id: str, days: int = 30) -> List[Node]:
-        # Stub for Neo4j
-        return []
+        with self.driver.session() as session:
+            res = session.run("""
+                MATCH (n:Belief)
+                WHERE n.user_id = $uid AND n.deprecated = FALSE
+                  AND n.last_confirmed_at < datetime() - duration({days: $days})
+                RETURN n
+            """, uid=user_id, days=days)
+            return [self._row_to_node(record['n']) for record in res]
 
     def get_retrieval_events(self, user_id: Optional[str], limit: int = 100) -> List[RetrievalEvent]:
-        # Stub for Neo4j
-        return []
+        with self.driver.session() as session:
+            if user_id:
+                res = session.run("""
+                    MATCH (e:RetrievalEvent {user_id: $uid})
+                    OPTIONAL MATCH (e)-[:USED_STRATEGY]->(s:RetrievalStrategy)
+                    RETURN e, s.id AS strategy_id
+                    ORDER BY e.created_at DESC
+                    LIMIT $limit
+                """, uid=user_id, limit=limit)
+            else:
+                res = session.run("""
+                    MATCH (e:RetrievalEvent)
+                    OPTIONAL MATCH (e)-[:USED_STRATEGY]->(s:RetrievalStrategy)
+                    RETURN e, s.id AS strategy_id
+                    ORDER BY e.created_at DESC
+                    LIMIT $limit
+                """, limit=limit)
+            events = []
+            for record in res:
+                e = record['e']
+                events.append(RetrievalEvent(
+                    id=UUID(e['id']),
+                    user_id=e['user_id'],
+                    query=e['query'],
+                    strategy_id=record['strategy_id'] or e.get('strategy_id', ''),
+                    nodes_found=e['nodes_found'],
+                    score=e.get('score', 0.0),
+                ))
+            return events
 
     def get_retrieval_event(self, event_id: UUID) -> Optional[RetrievalEvent]:
         with self.driver.session() as session:
@@ -201,7 +340,33 @@ class Neo4jGraphStore(GraphStore):
             return [self._row_to_node(record['n']) for record in res]
 
     def _row_to_node(self, n) -> Node:
-        return Node(id=UUID(n['id']), user_id=n['user_id'], label=n['label'], confidence=n['confidence'], evidence_count=n.get('evidence_count', 1), contradiction_count=n.get('contradiction_count', 0), domain_tags=list(n.get('domain_tags', [])), entities=list(n.get('entities', [])), temporal_stability=n.get('temporal_stability', 'stable'), abstraction_level=n.get('abstraction_level', 'specific'), embedding=list(n['embedding']), deprecated=n.get('deprecated', False))
+        created = n.get('created_at')
+        confirmed = n.get('last_confirmed_at')
+        if hasattr(created, 'to_native'):
+            created = created.to_native()
+        if hasattr(confirmed, 'to_native'):
+            confirmed = confirmed.to_native()
+        embedding = n.get('embedding')
+        if embedding is None:
+            emb_list = []
+        else:
+            emb_list = list(embedding)
+        return Node(
+            id=UUID(n['id']),
+            user_id=n['user_id'],
+            label=n['label'],
+            confidence=n['confidence'],
+            evidence_count=n.get('evidence_count', 1),
+            contradiction_count=n.get('contradiction_count', 0),
+            created_at=created or datetime.now(timezone.utc),
+            last_confirmed_at=confirmed or datetime.now(timezone.utc),
+            domain_tags=list(n.get('domain_tags', [])),
+            entities=list(n.get('entities', [])),
+            temporal_stability=n.get('temporal_stability', 'stable'),
+            abstraction_level=n.get('abstraction_level', 'specific'),
+            embedding=emb_list,
+            deprecated=n.get('deprecated', False),
+        )
 
     def _row_to_edge(self, r) -> Edge:
         return Edge(id=UUID(r['id']), from_node_id=UUID(r.start_node['id']), to_node_id=UUID(r.end_node['id']), relation=r['relation'], weight=r.get('weight', 0.5), evidence_count=r.get('evidence_count', 1))

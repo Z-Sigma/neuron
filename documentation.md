@@ -22,7 +22,7 @@ This document mirrors the **current codebase** (Python package `neuron`). For in
 | `neuron/graph/store_interface.py` | `GraphStore` ABC. |
 | `neuron/graph/postgres_store.py` | Postgres + pgvector implementation. |
 | `neuron/graph/neo4j_store.py` | Neo4j + optional `traverse_graph`. |
-| `neuron/graph/in_memory_store.py` | In-process store; stubs for some maintenance SQL features. |
+| `neuron/graph/in_memory_store.py` | In-process store; full `GraphStore` contract for dev/tests. |
 | `neuron/daemon/coherence.py` | `CoherenceDaemon` — conflicts, prune, strengthen. |
 | `neuron/daemon/scheduler.py` | `SleepScheduler` — periodic `force_sleep` per user. |
 | `neuron/daemon/tasks.py` | Celery app + `run_coherence_cycle` task. |

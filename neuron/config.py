@@ -80,8 +80,9 @@ class Settings(BaseSettings):
     min_events_before_evolution: int = 50
     judge_llm_model: str = "gpt-4o-mini" # Low-cost model for background evaluation
     
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
+    model_config = {
+        "env_file": ".env",
+        "extra": "ignore",
+    }
 
 settings = Settings()

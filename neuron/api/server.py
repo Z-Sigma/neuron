@@ -21,7 +21,10 @@ class RetrieveRequest(BaseModel):
 async def process_memory(req: ProcessRequest):
     try:
         node = memory.process(req.text, req.user_id)
-        return {"status": "success", "node": node}
+        return {
+            "status": "success",
+            "node": node.model_dump(mode="json") if node else None,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

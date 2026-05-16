@@ -34,6 +34,7 @@ CREATE INDEX IF NOT EXISTS nodes_vector_idx ON nodes USING hnsw (embedding vecto
 CREATE INDEX IF NOT EXISTS nodes_user_idx ON nodes(user_id);
 CREATE INDEX IF NOT EXISTS edges_from_idx ON edges(from_node_id);
 CREATE INDEX IF NOT EXISTS edges_to_idx ON edges(to_node_id);
+CREATE UNIQUE INDEX IF NOT EXISTS edges_from_to_relation_idx ON edges(from_node_id, to_node_id, relation);
 
 -- Adaptive Memory Extensions
 CREATE TABLE IF NOT EXISTS activity_log (

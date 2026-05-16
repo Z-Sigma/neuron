@@ -24,12 +24,13 @@ class AbstractionEngine:
                 logger.warning(f"Abstraction attempt {attempt + 1} failed: {e}")
                 if attempt == retries:
                     # Return a safe fallback instead of crashing
-                    logger.error(f"All abstraction attempts failed. Using raw text as fallback.")
+                    logger.error(f"All abstraction attempts failed. Flagging fallback.")
                     return AbstractionResult(
                         label=text[:150],
                         confidence=0.5,
                         domain_tags=[],
                         entities=[],
+                        metadata={"fallback": True}
                     )
 
     def batch_extract(self, texts: List[str], retries: int = 2) -> List[AbstractionResult]:
@@ -52,6 +53,7 @@ class AbstractionEngine:
                     # Use provided chunk text if label is missing or too short
                     if not data.get("label"):
                         data["label"] = texts[i][:150]
+                        data.setdefault("metadata", {})["fallback"] = True
                     final_results.append(AbstractionResult(**data))
                 
                 # Ensure we return the same number of results as input texts
@@ -59,15 +61,15 @@ class AbstractionEngine:
                     logger.warning(f"Batch size mismatch: expected {len(texts)}, got {len(final_results)}. Padding with fallbacks.")
                     while len(final_results) < len(texts):
                         idx = len(final_results)
-                        final_results.append(AbstractionResult(label=texts[idx][:150], confidence=0.5))
+                        final_results.append(AbstractionResult(label=texts[idx][:150], confidence=0.5, metadata={"fallback": True}))
                     final_results = final_results[:len(texts)]
                 
                 return final_results
             except Exception as e:
                 logger.warning(f"Batch abstraction attempt {attempt + 1} failed: {e}")
                 if attempt == retries:
-                    logger.error(f"All batch abstraction attempts failed. Falling back to simple results.")
-                    return [AbstractionResult(label=t[:150], confidence=0.5) for t in texts]
+                    logger.error(f"All batch abstraction attempts failed. Flagging all as fallbacks.")
+                    return [AbstractionResult(label=t[:150], confidence=0.5, metadata={"fallback": True}) for t in texts]
 
     def _parse_json_list(self, text: str) -> List[dict]:
         """Extracts a JSON list from LLM response."""

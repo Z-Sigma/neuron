@@ -14,31 +14,32 @@ class CoherenceDaemon:
         self.store = store
         self.provider = get_llm_provider(provider_type)
 
-    def run_cycle(self, user_id: str):
+    def run_cycle(self, user_id: str, always_use_llm: bool = False):
         print(f"Starting Coherence Cycle for user: {user_id}")
-        self.resolve_conflicts(user_id)
+        self.resolve_conflicts(user_id, always_use_llm=always_use_llm)
         self.prune_stale_nodes(user_id)
         self.strengthen_beliefs(user_id)
         print(f"Coherence Cycle complete for user: {user_id}")
 
-    def resolve_conflicts(self, user_id: str):
+    def resolve_conflicts(self, user_id: str, always_use_llm: bool = False):
         pairs = self.store.get_contradiction_pairs(user_id)
         for node_a, node_b, edge_id in pairs:
             # SNR Heuristic: Signal = Confidence * Evidence
             signal_a = node_a.confidence * node_a.evidence_count
             signal_b = node_b.confidence * node_b.evidence_count
             
-            # If one is significantly stronger (>20% diff), resolve immediately
-            if signal_a > signal_b * 1.2:
-                node_b.deprecated = True
-                self.store.update_node(node_b)
-                continue
-            elif signal_b > signal_a * 1.2:
-                node_a.deprecated = True
-                self.store.update_node(node_a)
-                continue
+            # If one is significantly stronger (>20% diff), resolve immediately (unless always_use_llm is True)
+            if not always_use_llm:
+                if signal_a > signal_b * 1.2:
+                    node_b.deprecated = True
+                    self.store.update_node(node_b)
+                    continue
+                elif signal_b > signal_a * 1.2:
+                    node_a.deprecated = True
+                    self.store.update_node(node_a)
+                    continue
             
-            # Tie/Ambiguity: Resolve with LLM
+            # Tie/Ambiguity or forced LLM: Resolve with LLM
             resolution_text = self._resolve_with_llm(node_a, node_b)
             try:
                 cleaned_json = self._clean_json_response(resolution_text)

@@ -1,6 +1,7 @@
 import logging
 from typing import List, Optional, Dict, Tuple
 from uuid import UUID
+from datetime import datetime, timezone, timedelta
 from collections import deque
 import numpy as np
 from neuron.models import Node, Edge, ActivityLog, RetrievalEvent, RetrievalStrategy
@@ -141,8 +142,11 @@ class InMemoryGraphStore(GraphStore):
         return list(set([a.user_id for a in self.activities]))
 
     def get_stale_nodes(self, user_id: str, days: int = 30) -> List[Node]:
-        # Stubs for in-memory
-        return []
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        return [
+            n for n in self.nodes.values()
+            if n.user_id == user_id and not n.deprecated and n.last_confirmed_at < cutoff
+        ]
     def get_retrieval_events(self, user_id: Optional[str], limit: int = 100) -> List[RetrievalEvent]:
         events = list(self.retrieval_events.values())
         if user_id: events = [e for e in events if e.user_id == user_id]
@@ -151,7 +155,14 @@ class InMemoryGraphStore(GraphStore):
     def get_retrieval_event(self, event_id: UUID) -> Optional[RetrievalEvent]: return self.retrieval_events.get(event_id)
     def delete_edge(self, edge_id: UUID) -> None:
         with self.lock:
-            if edge_id in self.edges: del self.edges[edge_id]
+            edge = self.edges.pop(edge_id, None)
+            if not edge:
+                return
+            for nid in (edge.from_node_id, edge.to_node_id):
+                if nid in self.edge_index:
+                    self.edge_index[nid] = [
+                        e for e in self.edge_index[nid] if e.id != edge_id
+                    ]
 
     def get_contradiction_pairs(self, user_id: str) -> List[Tuple[Node, Node, UUID]]:
         results = []

@@ -20,6 +20,7 @@ class Node(BaseModel):
     abstraction_level: Literal["specific", "pattern", "principle"] = "specific"
     embedding: Optional[List[float]] = None
     deprecated: bool = False
+    metadata: Dict[str, Optional[str | int | float | bool]] = Field(default_factory=dict)
 
     @field_validator("label")
     @classmethod
@@ -56,6 +57,7 @@ class AbstractionResult(BaseModel):
     entities: List[str] = []
     temporal_stability: Literal["stable", "volatile", "time-bound"] = "stable"
     abstraction_level: Literal["specific", "pattern", "principle"] = "specific"
+    metadata: Dict[str, Optional[str | int | float | bool]] = Field(default_factory=dict)
 
     @field_validator("label")
     @classmethod
@@ -96,5 +98,6 @@ class RetrievalEvent(BaseModel):
     query: str
     strategy_id: str
     nodes_found: int
+    retrieved_context: List[str] = Field(default_factory=list)
     score: float = 0.0 # Feedback score (0.0 - 1.0)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

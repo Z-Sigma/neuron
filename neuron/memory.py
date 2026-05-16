@@ -32,6 +32,8 @@ class Memory:
         
         self.filter = SurpriseFilter(self.store, self.embedder)
         self.retriever = Retriever(self.store, self.embedder)
+        from neuron.daemon.coherence import CoherenceDaemon
+        self.coherence_daemon = CoherenceDaemon(self.store)
 
     def maintenance(self, user_id: str, stale_days: int = 30, min_confidence: float = 0.35, consolidate: bool = True):
         """
@@ -51,16 +53,23 @@ class Memory:
         consolidated_count = 0
         
         # 1. Conflict Resolution (Core logic)
-        contradictions = self.store.get_contradiction_pairs(user_id)
-        for node_a, node_b, edge_id in contradictions:
-            if node_a.evidence_count >= node_b.evidence_count:
-                node_b.deprecated = True
-                self.store.update_node(node_b)
-            else:
-                node_a.deprecated = True
-                self.store.update_node(node_a)
-            self.store.delete_edge(edge_id)
-            pruned_count += 1
+        if consolidate:
+            # Use the more advanced CoherenceDaemon for LLM-assisted or SNR resolution
+            # We can pass always_use_llm from kwargs if we wanted, but for now we'll just use it
+            self.coherence_daemon.resolve_conflicts(user_id, always_use_llm=False)
+            pruned_count = 0 # Counter reset as CoherenceDaemon handles its own updates
+        else:
+            # Fallback to simple heuristic
+            contradictions = self.store.get_contradiction_pairs(user_id)
+            for node_a, node_b, edge_id in contradictions:
+                if node_a.evidence_count >= node_b.evidence_count:
+                    node_b.deprecated = True
+                    self.store.update_node(node_b)
+                else:
+                    node_a.deprecated = True
+                    self.store.update_node(node_a)
+                self.store.delete_edge(edge_id)
+                pruned_count += 1
             
         # 2. Stale Pruning
         stale_nodes = self.store.get_stale_nodes(user_id, days=stale_days)
@@ -97,7 +106,8 @@ class Memory:
                 domain_tags=list(set(sum([n.domain_tags for n in nodes], []))),
                 entities=list(set(sum([n.entities for n in nodes], []))),
                 abstraction_level="pattern",
-                embedding=self.embedder.embed(master_abstraction.label)
+                embedding=self.embedder.embed(master_abstraction.label),
+                metadata=master_abstraction.metadata
             )
             self.store.add_node(master_node)
             
@@ -130,11 +140,28 @@ class Memory:
 
     def _init_store(self) -> GraphStore:
         store_type = settings.graph_store_type.lower()
-        if store_type == "postgres": return PostgresGraphStore()
+        if store_type == "postgres":
+            try:
+                return PostgresGraphStore()
+            except Exception as e:
+                logger.warning(
+                    "Postgres unavailable (%s). Falling back to in-memory store.", e
+                )
+                return InMemoryGraphStore()
         elif store_type == "neo4j":
-            from neuron.graph.neo4j_store import Neo4jGraphStore
-            return Neo4jGraphStore(uri=settings.neo4j_uri, user=settings.neo4j_user, password=settings.neo4j_password)
-        else: return InMemoryGraphStore()
+            try:
+                from neuron.graph.neo4j_store import Neo4jGraphStore
+                return Neo4jGraphStore(
+                    uri=settings.neo4j_uri,
+                    user=settings.neo4j_user,
+                    password=settings.neo4j_password,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Neo4j unavailable (%s). Falling back to in-memory store.", e
+                )
+                return InMemoryGraphStore()
+        return InMemoryGraphStore()
 
     def process(self, text: str, user_id: str, novelty_threshold: Optional[float] = None) -> Optional[Node]:
         try:
@@ -154,7 +181,8 @@ class Memory:
                     domain_tags=abstraction.domain_tags,
                     temporal_stability=abstraction.temporal_stability,
                     abstraction_level=abstraction.abstraction_level,
-                    embedding=self.embedder.embed(abstraction.label)
+                    embedding=self.embedder.embed(abstraction.label),
+                    metadata=abstraction.metadata
                 )
                 self.store.add_node(new_node)
                 self._link_node(new_node, abstraction, user_id)
@@ -173,7 +201,8 @@ class Memory:
             user_id=user_id, label=abstraction.label, confidence=max(confidence, abstraction.confidence),
             domain_tags=abstraction.domain_tags, entities=abstraction.entities,
             temporal_stability=abstraction.temporal_stability, abstraction_level=abstraction.abstraction_level,
-            embedding=self.embedder.embed(abstraction.label)
+            embedding=self.embedder.embed(abstraction.label),
+            metadata=abstraction.metadata
         )
         self.store.add_node(new_node)
         self._link_node(new_node, abstraction, user_id)
@@ -402,7 +431,8 @@ class Memory:
                 entities=abstraction.entities,
                 temporal_stability=abstraction.temporal_stability,
                 abstraction_level=abstraction.abstraction_level,
-                embedding=unique_embeddings[i]
+                embedding=unique_embeddings[i],
+                metadata=abstraction.metadata
             )
             
             if global_deduplication:

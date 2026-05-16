@@ -39,7 +39,9 @@ class StrategyRegistry:
         
         if not user_owned:
             logger.info(f"Seeding strategy population for new user: {user_id}")
-            system_defaults = [s for s in all_strats if s.user_id is None]
+            system_defaults = [
+                s for s in all_strats if s.user_id in (None, "system")
+            ]
             if not system_defaults:
                 system_defaults = [RetrievalStrategy(id="sys_default", k_seeds=settings.k_seeds, traversal_depth=settings.traversal_depth)]
             

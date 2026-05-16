@@ -1203,15 +1203,21 @@ set NEO4J_URI=bolt://localhost:7687</code></pre>
                         </tr>
                         <tr>
                             <td>traverse_graph</td>
-                            <td class="partial">BFS fallback</td>
-                            <td class="yes">Native</td>
-                            <td class="partial">BFS</td>
+                            <td class="yes">Recursive SQL + edges</td>
+                            <td class="yes">APOC or BFS fallback</td>
+                            <td class="yes">BFS</td>
                         </tr>
                         <tr>
-                            <td>Coherence queries</td>
+                            <td>Coherence / adaptive hooks</td>
                             <td class="yes">Yes</td>
                             <td class="yes">Yes</td>
-                            <td class="no">Stubs empty</td>
+                            <td class="yes">Yes</td>
+                        </tr>
+                        <tr>
+                            <td>search_deprecated_nodes</td>
+                            <td class="yes">Yes</td>
+                            <td class="yes">Yes</td>
+                            <td class="yes">Yes</td>
                         </tr>
                     </tbody>
                 </table>

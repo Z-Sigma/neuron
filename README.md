@@ -360,12 +360,30 @@ Implement `neuron.graph.store_interface.GraphStore` — abstract methods include
 ## Tests
 
 ```bash
-pip install -e .
-pytest tests/ -q   # if pytest configured; else:
-python tests/batch_fast_test.py
-python tests/adaptive_test.py
-python tests/scale_test.py
+pip install -e ".[dev]"
+pytest tests/ -q
 ```
+
+Contract tests in `tests/test_store_contract.py` verify the `GraphStore` interface (vector search, deprecated archive, adaptive hooks, traversal). Run with Postgres or Neo4j available to validate those backends in your environment:
+
+```bash
+set GRAPH_STORE_TYPE=postgres
+set DATABASE_URL=postgresql://postgres:postgres@localhost:5432/neuron
+pytest tests/test_store_contract.py tests/ -q
+```
+
+### Store backend parity
+
+| Capability | `in_memory` | `postgres` | `neo4j` |
+| --- | --- | --- | --- |
+| Vector nearest / deprecated search | Yes | Yes (pgvector) | Yes (vector index) |
+| Graph traversal + edge myelination | BFS | Recursive SQL + edges | APOC or BFS fallback |
+| Adaptive strategies & retrieval events | Yes | Yes | Yes |
+| Activity log / maintenance users | Yes | Yes | Yes |
+| Stale node pruning | Yes | Yes | Yes |
+| `get_contradiction_pairs` | Yes | Yes | Yes |
+
+If Postgres or Neo4j is unreachable at startup, `Memory` logs a warning and falls back to `in_memory` (see `_init_store` in `neuron/memory.py`).
 
 ---
 

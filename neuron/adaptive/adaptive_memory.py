@@ -77,6 +77,8 @@ class AdaptiveMemory(Memory):
                 strategy_id=strategy.id,
                 nodes_found=len(result.get("direct_beliefs", []))
                 + len(result.get("related_context", [])),
+                retrieved_context=[b["label"] for b in result.get("direct_beliefs", [])]
+                + [c["label"] for c in result.get("related_context", [])],
                 score=score_feedback if score_feedback is not None else 0.5
             )
             self.store.log_retrieval_event(event)

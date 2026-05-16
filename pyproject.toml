@@ -46,3 +46,11 @@ neuron = "neuron.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["neuron*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["*_test.py", "test_*.py"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
