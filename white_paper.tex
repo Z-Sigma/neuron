@@ -1,0 +1,679 @@
+\documentclass[11pt,a4paper]{article}
+
+% =========================================================
+% PACKAGES
+% =========================================================
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+
+\usepackage[margin=1in]{geometry}
+
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{bm}
+\usepackage{mathtools}
+
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{enumitem}
+
+\usepackage{xcolor}
+\usepackage{listings}
+
+\usepackage{hyperref}
+\usepackage[most]{tcolorbox}
+
+\usepackage{titlesec}
+\usepackage{setspace}
+\usepackage{parskip}
+
+\usepackage{caption}
+
+% =========================================================
+% HYPERREF
+% =========================================================
+\hypersetup{
+    colorlinks = true,
+    linkcolor  = blue,
+    citecolor  = blue,
+    urlcolor   = cyan
+}
+
+% =========================================================
+% SPACING
+% =========================================================
+\setstretch{1.15}
+\setlength{\parskip}{4pt}
+
+% =========================================================
+% LIST SETTINGS (global)
+% =========================================================
+\setlist{
+    topsep     = 4pt,
+    itemsep    = 2pt,
+    parsep     = 0pt,
+    leftmargin = 1.4em
+}
+\setlist[enumerate]{label=\arabic*.}
+\setlist[itemize]{label=\textbullet}
+
+% =========================================================
+% SECTION FORMATTING
+% =========================================================
+\titleformat{\section}
+    {\large\bfseries}
+    {\thesection.}{0.6em}{}
+\titlespacing{\section}{0pt}{14pt}{6pt}
+
+\titleformat{\subsection}
+    {\normalsize\bfseries}
+    {\thesubsection}{0.6em}{}
+\titlespacing{\subsection}{0pt}{10pt}{4pt}
+
+\titleformat{\subsubsection}
+    {\normalsize\itshape}
+    {\thesubsubsection}{0.6em}{}
+\titlespacing{\subsubsection}{0pt}{8pt}{3pt}
+
+% =========================================================
+% TABLE SETTINGS
+% =========================================================
+\renewcommand{\arraystretch}{1.35}
+\setlength{\tabcolsep}{8pt}
+
+% =========================================================
+% TCOLORBOX STYLE
+% =========================================================
+\tcbset{
+    defbox/.style={
+        colback  = gray!6,
+        colframe = black!55,
+        arc      = 3pt,
+        boxrule  = 0.6pt,
+        left     = 8pt,
+        right    = 8pt,
+        top      = 6pt,
+        bottom   = 6pt,
+    }
+}
+
+% =========================================================
+% CUSTOM COMMANDS
+% =========================================================
+\newcommand{\vect}[1]{\bm{#1}}
+\newcommand{\R}{\mathbb{R}}
+
+% =========================================================
+% TITLE
+% =========================================================
+\title{%
+    \vspace{-1.5cm}
+    \textbf{\Huge Neuron}\\[0.4cm]
+    \Large Mathematical Foundations of a Self-Organizing Cognitive Memory Graph
+}
+
+\author{%
+    \textbf{Ajit Priyadarshi}\\
+    \small IIT(BHU), Varanasi
+}
+
+\date{May 2026}
+
+% =========================================================
+% DOCUMENT
+% =========================================================
+\begin{document}
+
+\maketitle
+\vspace{-0.6cm}
+
+% =========================================================
+% ABSTRACT
+% =========================================================
+\begin{abstract}
+Persistent, self-organizing memory is essential for autonomous AI agents to achieve long-term coherence. Traditional RAG systems often suffer from factual fragmentation and static retrieval. This paper introduces \textbf{Neuron}, a graph-based cognitive memory framework where beliefs (nodes) and associations (edges) evolve dynamically. We detail Neuron's multi-stage architecture—comprising surprise filtering, semantic abstraction, adaptive retrieval evolution, and a biologically-inspired ``Sleep Cycle'' for memory consolidation. We provide the mathematical foundations for novelty scoring, confidence reinforcement, and strategy optimization, offering a robust substrate for lifelong agent learning.
+\end{abstract}
+
+\vspace{0.4cm}
+
+% =========================================================
+% INTRODUCTION
+% =========================================================
+\section{Introduction}
+
+Modern Large Language Models (LLMs) possess vast parametric knowledge but lack the
+ability to autonomously update their worldview based on new experiences without
+expensive fine-tuning. Traditional memory systems are typically implemented as flat
+vector databases or short-term retrieval pipelines, resulting in:
+
+\begin{itemize}
+    \item Fragmented factual storage
+    \item Weak contextual reasoning
+    \item Redundant semantic accumulation
+    \item Poor long-term coherence
+\end{itemize}
+
+Neuron addresses these limitations through a persistent graph-backed cognitive memory
+architecture inspired by biological learning systems. Instead of treating memory as
+isolated embeddings, Neuron organizes knowledge into a continuously evolving semantic
+graph where:
+
+\begin{itemize}
+    \item \textbf{Nodes} represent distilled semantic beliefs
+    \item \textbf{Edges} represent contextual associations
+    \item \textbf{Retrieval} reinforces semantic pathways
+    \item \textbf{Maintenance cycles} reorganize memory
+\end{itemize}
+
+The framework transforms memory from passive storage into a self-organizing cognitive
+substrate capable of:
+
+\begin{enumerate}
+    \item Incremental learning
+    \item Semantic abstraction
+    \item Adaptive retrieval optimization
+    \item Memory consolidation
+    \item Long-term contextual reasoning
+\end{enumerate}
+
+By integrating vector similarity search with graph traversal dynamics and
+reinforcement-based adaptation, Neuron provides a foundation for persistent autonomous
+cognition.
+
+% =========================================================
+% DATA REPRESENTATION
+% =========================================================
+\section{Data Representation}
+
+The fundamental unit of knowledge in Neuron is the \textbf{Belief}, represented as a
+graph node. Semantic and contextual relationships are encoded as weighted graph edges.
+
+% ---------------------------------------------------------
+\subsection{Node Structure (Belief)}
+% ---------------------------------------------------------
+
+Each node $n$ is a structured semantic object containing the following attributes:
+
+\begin{table}[h!]
+\centering
+\caption{Belief Node Structure}
+\begin{tabular}{@{} p{4.2cm} p{8.8cm} @{}}
+    \toprule
+    \textbf{Field}         & \textbf{Description}                              \\
+    \midrule
+    ID                     & Unique UUID identifier                            \\
+    User ID                & Multi-tenant ownership identifier                 \\
+    Label                  & Distilled semantic fact                           \\
+    Confidence $(C)$       & Certainty score in $[0,1]$                        \\
+    Evidence Count         & Number of confirmations or observations           \\
+    Contradiction Count    & Frequency of semantic conflicts identified        \\
+    Domain Tags            & Semantic categories (e.g.\ AI, Finance)           \\
+    Entities               & Extracted named entities                          \\
+    Temporal Stability     & \{\texttt{stable}, \texttt{volatile},
+                             \texttt{time-bound}\}                              \\
+    Abstraction Level      & \{\texttt{specific}, \texttt{pattern},
+                             \texttt{principle}\}                               \\
+    Deprecated             & Boolean flag for resolution/forgetting            \\
+    Embedding              & 384-dimensional semantic vector                   \\
+    Created At             & Timestamp of node formation                       \\
+    Last Confirmed At      & Timestamp of most recent evidence reinforcement   \\
+    Last Contradicted At   & Timestamp of most recent conflict identified      \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+The semantic embedding is represented as:
+\[
+    E(n) \in \R^{384}
+\]
+using the default encoder \texttt{all-MiniLM-L6-v2}.
+
+% ---------------------------------------------------------
+\subsection{Edge Structure (Association)}
+% ---------------------------------------------------------
+
+Edges encode contextual relationships between beliefs. Each edge $e_{ij}$ contains:
+
+\begin{table}[h!]
+\centering
+\caption{Association Edge Structure}
+\begin{tabular}{@{} p{4.2cm} p{8.8cm} @{}}
+    \toprule
+    \textbf{Field}     & \textbf{Description}                                      \\
+    \midrule
+    ID                 & Unique edge UUID identifier                               \\
+    From / To ID       & UUIDs of connected nodes                                  \\
+    Relation Type      & \texttt{supports}, \texttt{contradicts},
+                         \texttt{refines}, \texttt{depends\_on}, \ldots          \\
+    Weight $(w)$       & Semantic strength in $[0.1,\,1.0]$                        \\
+    Evidence Count     & Number of confirmations or traversals                     \\
+    Created At         & Timestamp of edge formation                               \\
+    Last Updated At    & Timestamp of most recent weight reinforcement             \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+% =========================================================
+% SCORING TAXONOMY
+% =========================================================
+\section{Scoring Taxonomy and Input Mechanics}
+
+Neuron's operation is governed by several adaptive scoring mechanisms.
+
+\begin{table}[h!]
+\centering
+\caption{Neuron Scoring Metrics}
+\label{tab:scores}
+\begin{tabular}{@{} p{2.8cm} p{7.8cm} p{3.2cm} @{}}
+    \toprule
+    \textbf{Metric}           & \textbf{Formula / Logic}
+                              & \textbf{Range / Threshold}          \\
+    \midrule
+    Novelty $(N)$
+        & $\displaystyle 1 - \max\!\bigl(\operatorname{cosine\_sim}
+            (V_{\!in},V_{\!neighbors})\bigr)$
+        & $0.0$--$1.0$; novel if $N>0.3$          \\[8pt]
+
+    Confidence $(C)$
+        & $C_{t+1} = \min(0.95,\;C_t \times 1.1)$ per confirmation
+        & $0.0$--$1.0$; valid if $C>0.35$         \\[8pt]
+
+    Edge Weight $(w)$
+        & $w_{t+1} = \min(1.0,\;w_t\times 1.05)$ per traversal
+        & $0.1$--$1.0$; active if $w>0.6$         \\[8pt]
+
+    Fitness $(F)$
+        & EMA: $(1-\alpha)F_t + \alpha R$,\quad $\alpha=0.3$
+        & $0.0$--$1.0$                             \\[8pt]
+
+    Implicit Score $(S_i)$& $0.5 + 0.2(h>0) + 0.1(h>5)$
+        & $0.5$--$0.8$                             \\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+% ---------------------------------------------------------
+\subsection{Novelty Score}
+% ---------------------------------------------------------
+
+Novelty quantifies semantic surprise relative to existing memory:
+\[
+    N \;=\; 1 - \max_{b \in B}\Bigl(\operatorname{cosine\_sim}(E(T),\,E(b))\Bigr)
+\]
+where $T$ is the incoming text, $E(\cdot)$ is the embedding function, and $B$ is the
+current belief set.
+
+% ---------------------------------------------------------
+\subsection{Confidence Reinforcement}
+% ---------------------------------------------------------
+
+Confidence increases multiplicatively with repeated confirmations:
+\[
+    C_{t+1} \;=\; \min(0.95,\;C_t \times 1.1)
+\]
+This approach provides larger relative gains for low-confidence beliefs while decelerating as they approach the 0.95 saturation limit.
+
+% ---------------------------------------------------------
+\subsection{Fitness Score}
+% ---------------------------------------------------------
+
+Retrieval strategies are evaluated using an Exponential Moving Average (EMA):
+\[
+    F_{t+1} \;=\; 0.7\,F_t + 0.3\,R
+\]
+where $F_t$ is the prior strategy fitness and $R$ is the retrieval reward derived from:
+
+\begin{enumerate}
+    \item Explicit user feedback
+    \item Implicit retrieval heuristics (see Section 3.4)
+\end{enumerate}
+
+% ---------------------------------------------------------
+\subsection{Implicit Score}
+% ---------------------------------------------------------
+
+When explicit feedback is absent, retrieval quality is estimated via the implicit score $S_i$:
+\[
+    S_i \;=\; 0.5 + 0.2\,(h>0) + 0.1\,(h>5)
+\]
+where $h$ denotes the number of relevant belief nodes (hits) successfully retrieved. This mechanism is heavily used during maintenance cycles to evolve strategies in the background.
+
+% =========================================================
+% INGESTION
+% =========================================================
+\section{Ingestion and Surprise Filtering}
+
+Neuron uses a staged ingestion pipeline designed to minimize redundancy while
+preserving semantically valuable information.
+
+% ---------------------------------------------------------
+\subsection{Surprise Filter Gate}
+% ---------------------------------------------------------
+
+For every incoming text chunk $T$, the system computes:
+\[
+    S_{\max}
+    \;=\;
+    \max_{b \;\in\; \mathrm{NN}(T,\,5)}
+    \Bigl(\operatorname{cosine\_sim}(E(T),\,E(b))\Bigr)
+\]
+where $\mathrm{NN}(T,5)$ denotes the five nearest semantic neighbors.
+
+The ingestion pipeline is divided into three semantic bands.
+
+% ---------------------------------------------------------
+\subsubsection{Novelty Band}
+% ---------------------------------------------------------
+
+\textit{Condition:}\quad $1 - S_{\max} \geq 0.3$
+
+\begin{itemize}
+    \item Input is considered semantically novel
+    \item Sent to the LLM abstraction pipeline
+    \item A new belief node is created
+\end{itemize}
+
+% ---------------------------------------------------------
+\subsubsection{Confirmation Band}
+% ---------------------------------------------------------
+
+\textit{Condition:}\quad $0.75 \leq S_{\max} \leq 0.90$
+
+\begin{itemize}
+    \item Existing node evidence count incremented
+    \item Confidence reinforced
+\end{itemize}
+
+% ---------------------------------------------------------
+\subsubsection{Redundancy Band}
+% ---------------------------------------------------------
+
+\textit{Condition:}\quad $S_{\max} > 0.90$
+
+\begin{itemize}
+    \item Input discarded
+    \item Prevents semantic duplication
+    \item Reduces memory bloat
+\end{itemize}
+
+% =========================================================
+% DATA ADDITION METHODS
+% =========================================================
+\section{Data Addition Methods}
+
+% ---------------------------------------------------------
+\subsection{Single-Chunk Pipeline}
+% ---------------------------------------------------------
+
+The primary real-time ingestion pipeline consists of:
+
+\begin{enumerate}
+    \item \textbf{Surprise Check.}
+          If $N < 0.3$, the system updates or skips existing beliefs.
+
+    \item \textbf{LLM Abstraction.}
+          Novel content is distilled into:
+          \begin{itemize}
+              \item Semantic labels
+              \item Domain tags
+              \item Entities
+              \item Abstraction level
+              \item Temporal stability
+          \end{itemize}
+
+    \item \textbf{Node Creation.}
+          A new belief node is inserted into the graph.
+
+    \item \textbf{Local Linking.}
+          Edges are created to the two nearest neighbors, with
+          $w = \operatorname{similarity}$.
+\end{enumerate}
+
+% ---------------------------------------------------------
+\subsection{Fast Batch Mode}
+% ---------------------------------------------------------
+
+Designed for high-throughput ingestion, the system first computes the
+self-similarity matrix:
+\[
+    M = V V^{\top}
+\]
+Any chunk $i$ satisfying $\exists\, j < i : M_{ij} > 0.95$ is discarded. Remaining
+chunks are connected through $k$-NN graph construction ($k = 3$), with edge weights
+initialized using cosine similarity.
+
+% ---------------------------------------------------------
+\subsection{Deep Batch Mode}
+% ---------------------------------------------------------
+
+Deep Batch mode prioritizes semantic abstraction and long-range linkage:
+
+\begin{enumerate}
+    \item \textbf{Windowed LLM Abstraction.}
+          Default window size: $n = 20$.
+
+    \item \textbf{Global Entity Linking.}
+          For each extracted entity:
+          \begin{enumerate}
+              \item Search the graph for the strongest matching entity node
+              \item Select the node with highest evidence count
+              \item Create a cross-batch semantic edge with $w = 0.9$
+          \end{enumerate}
+\end{enumerate}
+
+This creates persistent semantic hubs across datasets and time.
+
+% =========================================================
+% RETRIEVAL
+% =========================================================
+\section{Retrieval and Myelination}
+
+Neuron retrieval combines vector similarity with graph traversal.
+
+% ---------------------------------------------------------
+\subsection{Graph Traversal}
+% ---------------------------------------------------------
+
+Retrieval proceeds in two stages:
+
+\begin{enumerate}
+    \item Vector seed selection ($k = 5$ seeds)
+    \item Breadth-First graph traversal to depth $D = 3$
+\end{enumerate}
+
+Edges satisfying $w < 0.6$ are treated as high-resistance pathways and ignored.
+
+% ---------------------------------------------------------
+\subsection{Myelination}
+% ---------------------------------------------------------
+
+Traversed edges are reinforced after successful retrieval:
+\[
+    w_{t+1} \;=\; \min(1.0,\;w_t \times 1.05)
+\]
+This creates emergent semantic routing optimization analogous to biological
+myelination.
+
+% =========================================================
+% ADAPTIVE EVOLUTION
+% =========================================================
+\section{Adaptive Strategy Evolution}
+
+Neuron autonomously evolves retrieval strategies.
+
+% ---------------------------------------------------------
+\subsection{Selection and Exploration}
+% ---------------------------------------------------------
+
+The framework uses an $\epsilon$-greedy policy with $\epsilon = 0.2$:
+
+\begin{itemize}
+    \item \textbf{Explore:} random strategy selected with probability $\epsilon$
+    \item \textbf{Exploit:} best-fitness strategy selected with probability $1 - \epsilon$
+\end{itemize}
+
+% ---------------------------------------------------------
+\subsection{Evolution Cycle}
+% ---------------------------------------------------------
+
+Evolution is triggered every 50 retrieval events:
+
+\begin{enumerate}
+    \item Rank all strategies by fitness $F$
+    \item Remove the lowest-fitness strategy
+    \item Clone the best-performing strategy
+    \item Apply stochastic mutation (see below)
+\end{enumerate}
+
+% ---------------------------------------------------------
+\subsection{Mutation Functions}
+% ---------------------------------------------------------
+
+Child parameters are derived from the parent via:
+
+\begin{align}
+    k_{\text{child}}      &= \operatorname{round}\!\bigl(
+                               k_{\text{parent}} + \mathcal{U}(-1,1)\bigr) \\[4pt]
+    D_{\text{child}}      &= \operatorname{round}\!\bigl(
+                               D_{\text{parent}} + \mathcal{U}(-1,1)\bigr) \\[4pt]
+    w_{\min,\text{child}} &= w_{\min,\text{parent}} + \mathcal{N}(0,0.1)   \\[4pt]
+    \tau_{\text{child}}   &= \tau_{\text{parent}}   + \mathcal{N}(0,0.1)
+\end{align}
+
+where $k$ is the retrieval seed count, $D$ the traversal depth, $w_{\min}$ the
+minimum traversable edge weight, and $\tau$ the similarity threshold.
+
+% =========================================================
+% MAINTENANCE
+% =========================================================
+\section{Maintenance: The Sleep Cycle}
+
+Neuron periodically enters a maintenance phase inspired by biological sleep
+consolidation.
+
+% ---------------------------------------------------------
+\subsection{Definitions}
+% ---------------------------------------------------------
+
+\begin{tcolorbox}[defbox]
+    \textbf{Maintenance} — Low-level graph operations:
+    \begin{itemize}
+        \item Pruning
+        \item Consolidation
+        \item Coherence repair
+    \end{itemize}
+
+    \medskip
+
+    \textbf{Sleep Cycle} — High-level orchestration phase responsible for:
+    \begin{enumerate}
+        \item Implicit scoring
+        \item Strategy evolution
+        \item Graph maintenance
+    \end{enumerate}
+\end{tcolorbox}
+
+Maintenance cycles execute every $24$ hours.
+
+% ---------------------------------------------------------
+\subsection{Internal Workflow}
+% ---------------------------------------------------------
+
+\subsubsection{1.\; Implicit Scoring}
+
+Unscored retrieval events are evaluated using:
+\[
+    S_i \;=\; 0.5 + 0.2\,(\text{hits}>0) + 0.1\,(\text{hits}>5)
+\]
+The resulting scores update retrieval strategy fitness.
+
+\subsubsection{2.\; Pruning}
+
+Beliefs satisfying both of the following conditions are deprecated or removed:
+
+\begin{itemize}
+    \item No confirmation within the past 30 days
+    \item $C < 0.35$
+\end{itemize}
+
+This minimizes graph entropy and preserves semantic efficiency.
+
+\subsubsection{3.\; Consolidation}
+
+When $\geq 5$ nodes share a common entity hub, the system synthesizes a higher-level
+abstraction called a \textbf{Master Belief}. The Master Belief inherits:
+
+\begin{itemize}
+    \item The maximum confidence among constituents
+    \item The sum of constituent evidence counts
+\end{itemize}
+
+This enables the organic emergence of generalized semantic concepts.
+
+% =========================================================
+% EMERGENT BEHAVIOR
+% =========================================================
+\section{Emergent Cognitive Behavior}
+
+Through repeated retrieval, reinforcement, pruning, and consolidation, Neuron exhibits
+several emergent properties:
+
+\begin{enumerate}
+    \item \textbf{Semantic Path Optimization.}
+          Frequently traversed reasoning pathways become dominant.
+
+    \item \textbf{Contextual Memory Clustering.}
+          Related beliefs self-organize into semantic hubs.
+
+    \item \textbf{Long-Term Concept Formation.}
+          Repeated observations evolve into generalized principles.
+
+    \item \textbf{Adaptive Retrieval Evolution.}
+          Retrieval policies improve autonomously over time.
+
+    \item \textbf{Dynamic Knowledge Compression.}
+          Consolidation reduces redundancy while preserving semantic richness.
+\end{enumerate}
+
+% =========================================================
+% CONCLUSION
+% =========================================================
+\section{Conclusion}
+
+Neuron transforms memory from passive storage into a continuously evolving cognitive
+substrate. By integrating:
+
+\begin{itemize}
+    \item Vector similarity search
+    \item Graph-structured semantic relationships
+    \item Reinforcement-driven pathway optimization
+    \item Adaptive retrieval evolution
+    \item Biologically-inspired consolidation mechanisms
+\end{itemize}
+
+the framework enables persistent self-organizing agent intelligence. Unlike traditional
+RAG systems that retrieve isolated fragments, Neuron maintains an evolving semantic
+worldview in which beliefs, associations, confidence, and abstraction continuously
+co-adapt over time.
+
+The architecture provides a foundation for future autonomous systems capable of:
+
+\begin{enumerate}
+    \item Lifelong learning
+    \item Dynamic memory consolidation
+    \item Contextual reasoning
+    \item Adaptive strategy evolution
+    \item Coherent long-term cognition
+\end{enumerate}
+
+As AI agents increasingly operate across extended time horizons and complex
+environments, systems such as Neuron may become foundational infrastructure for
+scalable machine cognition.
+
+\vspace{0.8cm}
+\begin{center}
+    \textit{--- End of Paper ---}
+\end{center}
+
+\end{document}

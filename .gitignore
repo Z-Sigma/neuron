@@ -74,11 +74,11 @@ test_out.txt
 neuron_cognitive_memory_graph.html
 *.log
 
-# LaTeX
-white_paper.tex
+# LaTeX (Allow white paper)
+# white_paper.tex
 *.aux
 *.log
-*.pdf
+# *.pdf
 *.toc
 *.out
 *.fdb_latexmk
