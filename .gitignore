@@ -74,8 +74,8 @@ test_out.txt
 neuron_cognitive_memory_graph.html
 *.log
 
-# LaTeX (Allow white paper)
-# white_paper.tex
+# LaTeX (Allow white paper PDF only)
+white_paper.tex
 *.aux
 *.log
 # *.pdf
